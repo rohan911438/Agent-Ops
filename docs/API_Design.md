@@ -45,12 +45,24 @@ Auth: Bearer JWT issued by Clerk, verified against Clerk's JWKS. When `CLERK_JWK
 | DELETE | `/settings/api-keys/{id}` | Revoke |
 | GET/POST | `/settings/wallet` | Connect a Base wallet address — no on-chain interaction |
 
-## Connectors (architecture only)
+## Health Scans
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/scans` | List scans for the org, newest first |
+| POST | `/scans/upload` | Multipart `file` (JSON/YAML agent manifest, 2MB cap). Parses synchronously; 422 on malformed input. Returns the scan `PENDING`. |
+| POST | `/scans/github` | Body `{ "repo_url", "github_token"? }`. Tests the connection synchronously; 422 if unreachable. Returns the scan `PENDING`. |
+| POST | `/scans/{id}/start` | 202. Schedules the scan (parse → ingest → recommend → report) via FastAPI `BackgroundTasks`; 409 if already started. |
+| GET | `/scans/{id}` | Poll for status/progress/summary/executive_report. 404 if not found or wrong org. |
+
+Scan-ingested agents become real `Agent` rows (`source=connector`) through the normal service layer — they show up in `/agents`, `/overview`, and `/recommendations` like any other agent. See `Architecture.md`'s "Health Scan flow" section.
+
+## Connectors (architecture)
 
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/connectors` | List connector records for the org |
-| POST | `/connectors` | **Always 501** — no adapter is registered for any `ConnectorType` yet. See `Architecture.md`. |
+| POST | `/connectors` | `github` is a **real, registered adapter** (`app/services/connectors/github_adapter.py`) — this now works. Every other `ConnectorType` is still **501** — no adapter registered yet. See `Architecture.md`. |
 
 ## Auth
 

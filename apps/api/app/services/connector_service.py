@@ -32,6 +32,17 @@ class ConnectorAdapter(ABC):
 ADAPTER_REGISTRY: dict[ConnectorType, type[ConnectorAdapter]] = {}
 
 
+def _register_default_adapters() -> None:
+    """Deferred import avoids a circular import (github_adapter imports
+    ConnectorAdapter from this module)."""
+    from app.services.connectors.github_adapter import GitHubConnectorAdapter
+
+    ADAPTER_REGISTRY[ConnectorType.GITHUB] = GitHubConnectorAdapter
+
+
+_register_default_adapters()
+
+
 async def list_connectors(db: AsyncSession, org_id: str) -> list[Connector]:
     result = await db.execute(select(Connector).where(Connector.org_id == org_id))
     return list(result.scalars().all())

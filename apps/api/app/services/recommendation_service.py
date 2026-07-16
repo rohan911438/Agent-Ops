@@ -20,6 +20,34 @@ from app.models.recommendation import Recommendation
 
 UNUSED_THRESHOLD_DAYS = 30
 HIGH_COST_CENTS_THRESHOLD = 20000  # $200/mo
+MODEL_DOWNGRADE_COST_THRESHOLD_CENTS = 5000  # $50/mo
+
+# Models already in a "cheap" tier never trigger a downgrade suggestion —
+# checked before the pattern list below so e.g. "gpt-4o-mini" (which
+# contains the substring "gpt-4o") is never suggested a downgrade to itself.
+_CHEAP_MODEL_MARKERS = ("mini", "haiku", "flash", "3.5")
+
+# (expensive model substring, suggested cheaper alternative) — checked in
+# order, first match wins. Against agent_metadata["model"], case-insensitive.
+_EXPENSIVE_MODEL_SUGGESTIONS: list[tuple[str, str]] = [
+    ("gpt-4-turbo", "gpt-4o-mini"),
+    ("gpt-4o", "gpt-4o-mini"),
+    ("gpt-4", "gpt-4o-mini"),
+    ("claude-3-opus", "claude-3-5-sonnet"),
+    ("claude-3-5-sonnet", "claude-3-haiku"),
+    ("claude-3-sonnet", "claude-3-haiku"),
+    ("gemini-1.5-pro", "gemini-1.5-flash"),
+]
+
+
+def _suggest_cheaper_model(model: str) -> str | None:
+    lowered = model.lower()
+    if any(marker in lowered for marker in _CHEAP_MODEL_MARKERS):
+        return None
+    for pattern, suggestion in _EXPENSIVE_MODEL_SUGGESTIONS:
+        if pattern in lowered:
+            return suggestion
+    return None
 
 
 async def list_recommendations(
@@ -68,6 +96,8 @@ async def refresh_recommendations(db: AsyncSession, org_id: str) -> list[Recomme
     created += await _rule_high_cost_agents(db, org_id, agents)
     created += await _rule_duplicate_agents(db, org_id, agents)
     created += await _rule_permission_risks(db, org_id, agents)
+    created += await _rule_orphaned_agents(db, org_id, agents)
+    created += await _rule_model_downgrade(db, org_id, agents)
     return created
 
 
@@ -211,6 +241,64 @@ async def _rule_permission_risks(
                     "observed activity requires. Review and scope down to least privilege."
                 ),
                 impact_estimate=f"{len(high_risk_perms)} high-risk scope(s)",
+            )
+            db.add(rec)
+            created.append(rec)
+    if created:
+        await db.commit()
+    return created
+
+
+async def _rule_orphaned_agents(
+    db: AsyncSession, org_id: str, agents: list[Agent]
+) -> list[Recommendation]:
+    created = []
+    for agent in agents:
+        if agent.owner_user_id is None and not await _has_open_recommendation(
+            db, org_id, agent.id, RecommendationType.ORPHANED_AGENT
+        ):
+            rec = Recommendation(
+                org_id=org_id,
+                agent_id=agent.id,
+                type=RecommendationType.ORPHANED_AGENT,
+                title=f'"{agent.name}" has no owner',
+                description=(
+                    f'"{agent.name}" ({agent.framework.value}) has no assigned owner. '
+                    "Ownerless agents are an audit and incident-response risk — nobody is "
+                    "accountable for its behavior, cost, or access."
+                ),
+                impact_estimate="1 unowned agent",
+            )
+            db.add(rec)
+            created.append(rec)
+    if created:
+        await db.commit()
+    return created
+
+
+async def _rule_model_downgrade(
+    db: AsyncSession, org_id: str, agents: list[Agent]
+) -> list[Recommendation]:
+    created = []
+    for agent in agents:
+        model = agent.agent_metadata.get("model") if agent.agent_metadata else None
+        if not model or agent.monthly_cost_cents < MODEL_DOWNGRADE_COST_THRESHOLD_CENTS:
+            continue
+        suggestion = _suggest_cheaper_model(model)
+        if suggestion and not await _has_open_recommendation(
+            db, org_id, agent.id, RecommendationType.MODEL_DOWNGRADE
+        ):
+            rec = Recommendation(
+                org_id=org_id,
+                agent_id=agent.id,
+                type=RecommendationType.MODEL_DOWNGRADE,
+                title=f'"{agent.name}" could run on a cheaper model',
+                description=(
+                    f'"{agent.name}" runs on {model} at ${agent.monthly_cost_cents / 100:.0f}/mo. '
+                    f"{suggestion} handles most of the same workloads at a fraction of the cost — "
+                    "worth an A/B comparison before switching production traffic."
+                ),
+                impact_estimate=f"switch to {suggestion}",
             )
             db.add(rec)
             created.append(rec)

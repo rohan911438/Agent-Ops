@@ -10,6 +10,8 @@ const typeLabels: Record<RecommendationType, string> = {
   permission_risk: "Permission Risks",
   memory_optimization: "Memory Optimization",
   workflow_optimization: "Workflow Optimization",
+  orphaned_agent: "Orphaned Agents",
+  model_downgrade: "Model Downgrades",
 };
 
 export default async function RecommendationsPage() {

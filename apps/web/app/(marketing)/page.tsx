@@ -50,8 +50,8 @@ export default function LandingPage() {
             <a href="#pricing" className="hover:text-foreground">
               Pricing
             </a>
-            <Link href="/overview">
-              <Button size="sm">Sign in</Button>
+            <Link href="/health-scan/new">
+              <Button size="sm">Start Health Scan</Button>
             </Link>
           </nav>
         </div>
@@ -64,13 +64,13 @@ export default function LandingPage() {
             The Enterprise Control Plane for AI Agents.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
-            Discover every AI agent running across your company, understand what they&apos;re
-            doing, and know exactly how to optimize them — cost, risk, and performance, in one
-            place.
+            Run a Health Scan and get an Executive Report in minutes: how many agents you have,
+            where money is being wasted, where risk is highest, and the top 5 highest-ROI actions
+            to take next.
           </p>
           <div className="mt-8 flex items-center justify-center gap-3">
-            <Link href="/overview">
-              <Button size="lg">Get started</Button>
+            <Link href="/health-scan/new">
+              <Button size="lg">Start Health Scan</Button>
             </Link>
             <a href="#how-it-works">
               <Button size="lg" variant="outline">
@@ -156,8 +156,8 @@ export default function LandingPage() {
               See what&apos;s running across your company.
             </h2>
             <div className="mt-6">
-              <Link href="/overview">
-                <Button size="lg">Get started</Button>
+              <Link href="/health-scan/new">
+                <Button size="lg">Start Health Scan</Button>
               </Link>
             </div>
           </div>

@@ -1,0 +1,64 @@
+{
+  "agents": [
+    {
+      "name": "Email Triage Agent",
+      "framework": "openai_agents",
+      "model": "gpt-4o-mini",
+      "monthly_cost_cents": 1500,
+      "owner_email": "owner@dev-org.test"
+    },
+    {
+      "name": "Email Triage Agent v2",
+      "framework": "openai_agents",
+      "model": "gpt-4o-mini",
+      "monthly_cost_cents": 1400,
+      "owner_email": "owner@dev-org.test"
+    },
+    {
+      "name": "Contract Review Bot",
+      "framework": "langgraph",
+      "model": "gpt-4-turbo",
+      "permissions": [
+        { "scope": "filesystem:write", "resource": "contracts_repo", "risk_level": "high" }
+      ]
+    },
+    {
+      "name": "Customer Onboarding Crew",
+      "framework": "crewai",
+      "model": "claude-3-opus",
+      "monthly_cost_cents": 18000,
+      "owner_email": "owner@dev-org.test"
+    },
+    {
+      "name": "Data Pipeline Agent",
+      "framework": "custom",
+      "monthly_cost_cents": 300,
+      "owner_email": "owner@dev-org.test"
+    },
+    {
+      "name": "Slack Digest Bot",
+      "framework": "mcp",
+      "model": "gpt-4o-mini",
+      "monthly_cost_cents": 200,
+      "owner_email": "owner@dev-org.test"
+    },
+    {
+      "name": "Marketing Copy Generator",
+      "framework": "autogen",
+      "model": "gpt-4o",
+      "monthly_cost_cents": 9000
+    },
+    {
+      "name": "Legacy Ticket Router",
+      "framework": "n8n",
+      "monthly_cost_cents": 150,
+      "owner_email": "owner@dev-org.test"
+    },
+    {
+      "name": "Sales Outreach Agent",
+      "framework": "langgraph",
+      "model": "gemini-1.5-pro",
+      "monthly_cost_cents": 8000
+    }
+  ]
+}

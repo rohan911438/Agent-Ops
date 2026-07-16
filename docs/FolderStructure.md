@@ -5,18 +5,21 @@ agentops-cloud/
 ├── apps/
 │   ├── web/                       Next.js 15 app (App Router)
 │   │   ├── app/
-│   │   │   ├── (marketing)/       Public landing page
-│   │   │   └── (app)/             Clerk-gated shell: overview, agents, recommendations, activity, settings
+│   │   │   ├── (marketing)/       Public landing page (primary CTA → Health Scan)
+│   │   │   └── (app)/             Clerk-gated shell: health-scan, overview, agents, recommendations, activity, settings
 │   │   ├── components/            App-specific client components (sidebar nav, tabs, forms)
+│   │   │   └── health-scan/       data-source-picker.tsx, scan-status.tsx
 │   │   ├── lib/                   api-client.ts (browser fetch), server-api.ts (RSC fetch + Clerk token)
 │   │   └── middleware.ts          Clerk route protection
 │   │
 │   └── api/                       FastAPI app
 │       ├── app/
-│       │   ├── models/            SQLAlchemy models (9 tables) + enums
+│       │   ├── models/            SQLAlchemy models (10 tables, incl. health_scan.py) + enums
 │       │   ├── schemas/           Pydantic request/response schemas
-│       │   ├── api/v1/            Route handlers, one file per resource
-│       │   ├── services/          Business logic — agent, recommendation, activity, connector, settings, llm
+│       │   ├── api/v1/            Route handlers, one file per resource (incl. scans.py)
+│       │   ├── services/          Business logic — agent, recommendation, activity, connector, settings, llm, scan_service
+│       │   │   ├── scan/          parsers.py, cost_estimator.py, report_service.py
+│       │   │   └── connectors/    github_adapter.py — the one real, registered ConnectorAdapter
 │       │   ├── auth/clerk.py      JWKS-based JWT verification (skipped if unconfigured)
 │       │   ├── jobs/tasks.py      Background job entry points (plain functions today, Celery-ready)
 │       │   ├── database.py, config.py, main.py
@@ -24,15 +27,15 @@ agentops-cloud/
 │       └── data/                   SQLite database file lives here (gitignored)
 │
 ├── packages/
-│   ├── ui/                        Shared design system (Card, Table, Badge, StatusPill, MetricCard, Sidebar, Button, Dialog, Alert)
+│   ├── ui/                        Shared design system (Card, Table, Badge, StatusPill, MetricCard, Sidebar, Stepper, Button, Dialog, Alert)
 │   ├── shared-types/               Zod schemas + TS types mirroring the API's Pydantic schemas
 │   ├── config/                     Shared Tailwind preset + base tsconfig
 │   └── sdk/
-│       ├── python/                 agentops-cloud (pip) — reserved, Phase 2
-│       └── node/                    @agentops/sdk (npm) — reserved, Phase 2
+│       ├── python/                 agentops-cloud (pip) — reserved, later phase
+│       └── node/                    @agentops/sdk (npm) — reserved, later phase
 │
 ├── docs/                            You are here
-├── scripts/                         bootstrap.sh, dev.sh, seed_db.py
+├── scripts/                         bootstrap.sh, dev.sh, seed_db.py, fixtures/sample-agents.json
 ├── infrastructure/                  Reserved for a real deploy target (empty today — no Docker in the MVP)
 ├── turbo.json
 └── package.json                     npm workspaces root

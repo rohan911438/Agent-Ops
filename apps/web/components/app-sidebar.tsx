@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Sidebar, type SidebarItem } from "@agentops/ui";
 
 const navItems: SidebarItem[] = [
+  { label: "Health Scan", href: "/health-scan" },
   { label: "Overview", href: "/overview" },
   { label: "Agents", href: "/agents" },
   { label: "Recommendations", href: "/recommendations" },

@@ -37,6 +37,8 @@ class RecommendationType(str, enum.Enum):
     PERMISSION_RISK = "permission_risk"
     MEMORY_OPTIMIZATION = "memory_optimization"
     WORKFLOW_OPTIMIZATION = "workflow_optimization"
+    ORPHANED_AGENT = "orphaned_agent"
+    MODEL_DOWNGRADE = "model_downgrade"
 
 
 class RecommendationStatus(str, enum.Enum):
@@ -62,6 +64,23 @@ class ConnectorStatus(str, enum.Enum):
     NOT_CONNECTED = "not_connected"
     CONNECTED = "connected"
     ERROR = "error"
+
+
+class ScanSourceType(str, enum.Enum):
+    FILE_UPLOAD = "file_upload"
+    GITHUB = "github"
+    LANGGRAPH = "langgraph"
+    CREWAI = "crewai"
+    OPENAI_AGENTS_SDK = "openai_agents_sdk"
+
+
+class ScanStatus(str, enum.Enum):
+    PENDING = "pending"
+    PARSING = "parsing"
+    ANALYZING = "analyzing"
+    GENERATING_REPORT = "generating_report"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class UserRole(str, enum.Enum):

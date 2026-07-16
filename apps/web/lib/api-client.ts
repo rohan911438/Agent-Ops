@@ -14,10 +14,14 @@ export async function apiFetch<T>(
   init?: RequestInit,
   token?: string | null,
 ): Promise<T> {
+  // FormData bodies need the browser to set their own multipart boundary —
+  // a forced "application/json" here would silently break file uploads.
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },

@@ -49,6 +49,8 @@ export const RecommendationType = z.enum([
   "permission_risk",
   "memory_optimization",
   "workflow_optimization",
+  "orphaned_agent",
+  "model_downgrade",
 ]);
 export type RecommendationType = z.infer<typeof RecommendationType>;
 
@@ -125,3 +127,68 @@ export const WalletSchema = z.object({
   created_at: z.string(),
 });
 export type Wallet = z.infer<typeof WalletSchema>;
+
+export const ScanSourceType = z.enum([
+  "file_upload",
+  "github",
+  "langgraph",
+  "crewai",
+  "openai_agents_sdk",
+]);
+export type ScanSourceType = z.infer<typeof ScanSourceType>;
+
+export const ScanStatus = z.enum([
+  "pending",
+  "parsing",
+  "analyzing",
+  "generating_report",
+  "completed",
+  "failed",
+]);
+export type ScanStatus = z.infer<typeof ScanStatus>;
+
+export const ExecutiveReportActionSchema = z.object({
+  title: z.string(),
+  rationale: z.string(),
+  estimated_impact: z.string(),
+});
+export type ExecutiveReportAction = z.infer<typeof ExecutiveReportActionSchema>;
+
+export const ExecutiveReportSchema = z.object({
+  money_wasted: z.string(),
+  risk_summary: z.string(),
+  merge_candidates: z.array(z.string()),
+  model_downgrades: z.array(z.string()),
+  redundant_workflows: z.array(z.string()),
+  top_actions: z.array(ExecutiveReportActionSchema),
+});
+export type ExecutiveReport = z.infer<typeof ExecutiveReportSchema>;
+
+export const ScanSummarySchema = z.object({
+  agent_count: z.number().int(),
+  frameworks: z.record(z.number().int()),
+  models: z.record(z.number().int()),
+  monthly_cost_cents: z.number().int(),
+  duplicate_count: z.number().int(),
+  orphaned_count: z.number().int(),
+  high_risk_count: z.number().int(),
+  unused_count: z.number().int(),
+  model_downgrade_count: z.number().int(),
+});
+export type ScanSummary = z.infer<typeof ScanSummarySchema>;
+
+export const HealthScanSchema = z.object({
+  id: z.string(),
+  org_id: z.string(),
+  source_type: ScanSourceType,
+  source_label: z.string(),
+  status: ScanStatus,
+  current_step: z.string().nullable(),
+  agent_ids: z.array(z.string()),
+  summary: ScanSummarySchema.nullable(),
+  executive_report: ExecutiveReportSchema.nullable(),
+  error_message: z.string().nullable(),
+  created_at: z.string(),
+  completed_at: z.string().nullable(),
+});
+export type HealthScan = z.infer<typeof HealthScanSchema>;
