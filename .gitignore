@@ -1,0 +1,40 @@
+# Node
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.uv/
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docker
+*.pid
+
+# Logs
+*.log
+
+# Database
+*.sqlite3

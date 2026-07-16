@@ -1,0 +1,8 @@
+{
+  "extends": "@agentops/config/tsconfig-base",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}

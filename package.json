@@ -1,0 +1,24 @@
+{
+  "name": "agentops-cloud",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AgentOps Cloud — The Enterprise Control Plane for AI Agents.",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "packages/sdk/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.0"
+  }
+}

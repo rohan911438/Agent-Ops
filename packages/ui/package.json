@@ -1,0 +1,26 @@
+{
+  "name": "@agentops/ui",
+  "private": true,
+  "version": "0.1.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "next": "^15.0.0"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.5.2",
+    "lucide-react": "^0.451.0"
+  },
+  "devDependencies": {
+    "@agentops/config": "*",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.6.0"
+  }
+}
