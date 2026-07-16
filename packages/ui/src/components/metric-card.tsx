@@ -13,7 +13,11 @@ export function MetricCard({
   tone?: "default" | "warning" | "danger";
 }) {
   const toneClass =
-    tone === "danger" ? "text-red-500" : tone === "warning" ? "text-amber-500" : "text-foreground";
+    tone === "danger"
+      ? "text-white font-bold border-b border-white pb-0.5 inline-block"
+      : tone === "warning"
+        ? "text-zinc-200 underline decoration-zinc-600 decoration-1"
+        : "text-foreground";
 
   return (
     <Card>

@@ -2,6 +2,7 @@ from app.models.activity_event import ActivityEvent
 from app.models.agent import Agent
 from app.models.agent_permission import AgentPermission
 from app.models.api_key import ApiKey
+from app.models.auth_challenge import AuthChallenge
 from app.models.connector import Connector
 from app.models.health_scan import HealthScan
 from app.models.organization import Organization
@@ -14,6 +15,7 @@ __all__ = [
     "Agent",
     "AgentPermission",
     "ApiKey",
+    "AuthChallenge",
     "Connector",
     "HealthScan",
     "Organization",

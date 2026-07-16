@@ -26,5 +26,8 @@ class HealthScan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     agent_ids: Mapped[list] = mapped_column(JSON, default=list)
     summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     executive_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Dedicated implementation plan generated after the executive report —
+    # see app/services/scan/optimization_plan_service.py.
+    optimization_plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

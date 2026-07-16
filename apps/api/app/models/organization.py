@@ -10,6 +10,5 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     name: Mapped[str] = mapped_column(String(255))
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    clerk_org_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
 
     users: Mapped[list["User"]] = relationship(back_populates="organization")  # noqa: F821

@@ -6,6 +6,8 @@
 
 **Phase 2b — SDK.** Implement `packages/sdk/python` (`agentops-cloud`) and `packages/sdk/node` (`@agentops/sdk`) for real: `init()`, `heartbeat()`, automatic agent discovery, cost/tool-call tracking. This is what turns "manually entered/scanned agents" into "agents that show up on their own."
 
+**Phase 2c — Wallet Auth + ASP Upgrade (this build).** Replaced Clerk with provider-agnostic, wallet-first authentication (OKX Wallet challenge-response, `AuthProviderType` reserving Google/Microsoft/GitHub/Okta/SAML for later) and a real session layer (httpOnly cookie, HS256 JWT). Reframed the product as one Agentic Service Provider: the Executive Report grew from 6 to 9 sections plus a rule-derived health score, and a new Optimization Plan (`app/services/scan/optimization_plan_service.py`) turns findings into a phased, dependency-aware implementation roadmap. The Health Scan's progress narration was relabeled onto friendlier, still-honest stage names. No business logic (rule engine, connectors, scan orchestration) changed underneath.
+
 **Phase 3 — Observability.** Register real `ConnectorAdapter` implementations (`app/services/connector_service.py`) for the remaining connector types — LangGraph, CrewAI, OpenAI Agents SDK, MCP, Docker, Kubernetes, AWS, Azure, GCP (GitHub already landed in Phase 2). Background sync needs a real scheduler at this point — promote `app/jobs/tasks.py` functions to Celery tasks with Redis as the broker (see `TechnicalDecisions.md`).
 
 **Phase 4 — Optimization Engine.** Recommendation engine grows from six rule-based checks into a broader, still-explainable system — likely a hybrid of rules and a learned model. Whatever it becomes, it should stay honest about which recommendations are rule-derived vs. model-derived vs. AI-narrated (the Executive Report already introduces this distinction — see `TechnicalDecisions.md`).
@@ -32,11 +34,22 @@
 - [x] M11 — Health Scan wizard UI (data source picker, progress stepper, report, recommendations)
 - [x] M12 — Landing page repointed at Health Scan as the primary funnel
 
+## Milestones for Phase 2c (this build)
+
+- [x] M13 — Wallet auth module (`app/auth/session.py`, `app/auth/providers/wallet.py`), DB-backed nonce, session cookie
+- [x] M14 — Clerk fully removed (API + web); `AUTH_DISABLED` dev bypass preserves zero-config local dev
+- [x] M15 — `ConnectWalletButton` flow (missing-extension dialog, connect, sign, verify, redirect)
+- [x] M16 — Settings > Wallet rebuilt (short address, status, last verification, disconnect)
+- [x] M17 — Executive Report expanded to 9 sections + rule-derived health score
+- [x] M18 — Optimization Plan service + UI (phased horizons, per-item ratings)
+- [x] M19 — Enterprise UX polish: loading skeletons, page transitions, expanded scan progress narration
+
 ## Potential technical risks
 
 - **Clerk org model vs. internal org model drift** — mitigated by webhook-driven sync (`POST /auth/webhook`); Clerk stays the source of truth for identity, SQLite/Postgres for product data.
 - **Recommendation engine credibility** — explicitly rule-based, not ML. State this in-product eventually (a small "how this was generated" affordance), not just in docs.
-- **Executive Report credibility** — the AI-narrated sections (`app/services/scan/report_service.py`) must never claim analysis they didn't do, especially the GitHub heuristic path (`needs_review: true`, static manifest scan only — no code execution). Always degrades to a deterministic template rather than fail or hallucinate when no LLM is configured.
+- **Executive Report / Optimization Plan credibility** — the AI-narrated sections (`app/services/scan/report_service.py`, `optimization_plan_service.py`) must never claim analysis they didn't do, especially the GitHub heuristic path (`needs_review: true`, static manifest scan only — no code execution). Every rating field (priority, effort, risk, confidence, health score) is rule-derived from a documented table, never invented by an LLM; only narrative prose is ever LLM-enriched. Always degrades to a deterministic template rather than fail or hallucinate when no LLM is configured.
+- **Wallet auth without a real extension in every environment** — the full "approve in the actual OKX Wallet popup" click can only be verified by a human with the extension installed; automated tests simulate the signature step with a throwaway `eth_account` keypair instead (see `apps/api/tests/test_auth_wallet.py`).
 - **Agent schema rigidity across frameworks** — mitigated by `agent_metadata` JSON column on `agents`; framework-specific fields don't force a migration.
 - **Scan reliability without a queue broker** — a scan stuck mid-run because the dev process restarted has no auto-recovery in the MVP (`BackgroundTasks`, no Celery); acceptable for demo scope, revisit if Phase 3's real scheduler lands.
 - **Scope creep** — SDK, remaining connectors, and blockchain proofs all exist as interfaces/placeholders only. Resist filling them in ahead of their phase.

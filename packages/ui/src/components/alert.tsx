@@ -2,12 +2,12 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../lib/utils";
 
-const alertVariants = cva("relative w-full rounded-lg border p-4 text-sm", {
+const alertVariants = cva("relative w-full rounded-lg border p-4 text-sm transition-colors", {
   variants: {
     variant: {
       default: "border-border bg-card text-card-foreground",
-      warning: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-      destructive: "border-destructive/30 bg-destructive/10 text-destructive",
+      warning: "border-zinc-800 bg-zinc-950 text-zinc-300",
+      destructive: "border-white bg-zinc-950 text-white font-medium",
     },
   },
   defaultVariants: { variant: "default" },

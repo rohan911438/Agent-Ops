@@ -64,9 +64,5 @@ class WalletRead(BaseModel):
     id: str
     chain: WalletChain
     address: str
+    last_verified_at: datetime | None
     created_at: datetime
-
-
-class WalletConnect(BaseModel):
-    chain: WalletChain = WalletChain.BASE
-    address: str

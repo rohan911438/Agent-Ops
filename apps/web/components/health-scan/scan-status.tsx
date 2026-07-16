@@ -17,6 +17,7 @@ import {
 import type { HealthScan, Recommendation } from "@agentops/shared-types";
 import { apiFetch } from "@/lib/api-client";
 import { RecommendationActions } from "@/components/recommendation-actions";
+import { OptimizationPlanView } from "@/components/health-scan/optimization-plan";
 
 const STEP_ORDER = ["pending", "parsing", "analyzing", "generating_report", "completed"] as const;
 
@@ -137,29 +138,37 @@ export function ScanStatus({ initialScan }: { initialScan: HealthScan }) {
       )}
 
       {report && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-2">
+              <CardTitle className="text-foreground">Executive Summary</CardTitle>
+              <Badge
+                variant={
+                  report.health_score >= 80 ? "secondary" : report.health_score >= 50 ? "outline" : "destructive"
+                }
+              >
+                Health {report.health_score}/100
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">{report.executive_summary}</p>
+            <p className="text-sm text-muted-foreground">{report.organization_overview}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {report && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle className="text-foreground">Where money is being wasted</CardTitle>
+              <CardTitle className="text-foreground">Cost Analysis</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">{report.money_wasted}</CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-foreground">Where risk is highest</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">{report.risk_summary}</CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-foreground">Agents that should be merged</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {report.merge_candidates.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No merge candidates found.</p>
-              ) : (
-                <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
-                  {report.merge_candidates.map((item, i) => (
+            <CardContent className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">{report.cost_analysis.summary}</p>
+              {report.cost_analysis.model_downgrade_suggestions.length > 0 && (
+                <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+                  {report.cost_analysis.model_downgrade_suggestions.map((item, i) => (
                     <li key={i}>• {item}</li>
                   ))}
                 </ul>
@@ -168,30 +177,47 @@ export function ScanStatus({ initialScan }: { initialScan: HealthScan }) {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle className="text-foreground">Models that can be downgraded</CardTitle>
+              <CardTitle className="text-foreground">Security Risks</CardTitle>
             </CardHeader>
-            <CardContent>
-              {report.model_downgrades.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No downgrade opportunities found.</p>
-              ) : (
-                <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
-                  {report.model_downgrades.map((item, i) => (
+            <CardContent className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">{report.security_risks.summary}</p>
+              {report.security_risks.high_risk_agents.length > 0 && (
+                <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+                  {report.security_risks.high_risk_agents.map((item, i) => (
                     <li key={i}>• {item}</li>
                   ))}
                 </ul>
               )}
             </CardContent>
           </Card>
-          <Card className="lg:col-span-2">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-foreground">Redundant workflows</CardTitle>
+              <CardTitle className="text-foreground">Operational Risks</CardTitle>
             </CardHeader>
-            <CardContent>
-              {report.redundant_workflows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No redundant workflows found.</p>
-              ) : (
-                <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
-                  {report.redundant_workflows.map((item, i) => (
+            <CardContent className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">{report.operational_risks.summary}</p>
+              {[...report.operational_risks.orphaned_agents, ...report.operational_risks.redundant_workflows]
+                .length > 0 && (
+                <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+                  {report.operational_risks.orphaned_agents.map((item, i) => (
+                    <li key={`o-${i}`}>• {item}</li>
+                  ))}
+                  {report.operational_risks.redundant_workflows.map((item, i) => (
+                    <li key={`r-${i}`}>• {item}</li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-foreground">Optimization Opportunities</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">{report.optimization_opportunities.summary}</p>
+              {report.optimization_opportunities.merge_candidates.length > 0 && (
+                <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+                  {report.optimization_opportunities.merge_candidates.map((item, i) => (
                     <li key={i}>• {item}</li>
                   ))}
                 </ul>
@@ -202,10 +228,19 @@ export function ScanStatus({ initialScan }: { initialScan: HealthScan }) {
       )}
 
       {report && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-foreground">Business Impact</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">{report.business_impact}</CardContent>
+        </Card>
+      )}
+
+      {report && (
         <div className="flex flex-col gap-3">
           <h2 className="text-sm font-medium text-muted-foreground">Top 5 Highest-ROI Actions</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {report.top_actions.map((action, i) => (
+            {report.priority_actions.map((action, i) => (
               <Card key={i}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
@@ -225,6 +260,8 @@ export function ScanStatus({ initialScan }: { initialScan: HealthScan }) {
           </div>
         </div>
       )}
+
+      {scan.optimization_plan && <OptimizationPlanView plan={scan.optimization_plan} />}
 
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-medium text-muted-foreground">Optimization Recommendations</h2>

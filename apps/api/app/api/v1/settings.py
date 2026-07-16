@@ -14,7 +14,6 @@ from app.schemas.settings import (
     UserInvite,
     UserRead,
     UserRoleUpdate,
-    WalletConnect,
     WalletRead,
     WorkspaceRead,
     WorkspaceUpdate,
@@ -114,10 +113,3 @@ async def revoke_api_key(
 @router.get("/wallet", response_model=WalletRead | None)
 async def get_wallet(db: AsyncSession = Depends(get_db), org: Organization = Depends(get_current_org)):
     return await settings_service.get_wallet(db, org.id)
-
-
-@router.post("/wallet", response_model=WalletRead)
-async def connect_wallet(
-    data: WalletConnect, db: AsyncSession = Depends(get_db), org: Organization = Depends(get_current_org)
-):
-    return await settings_service.connect_wallet(db, org.id, data)

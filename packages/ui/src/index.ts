@@ -7,5 +7,6 @@ export * from "./components/table";
 export * from "./components/alert";
 export * from "./components/dialog";
 export * from "./components/sidebar";
+export * from "./components/skeleton";
 export * from "./components/stepper";
 export * from "./lib/utils";

@@ -17,9 +17,19 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite+aiosqlite:///./data/agentops.db"
 
-    clerk_jwks_url: str = ""
-    clerk_issuer: str = ""
-    clerk_webhook_secret: str = ""
+    # Session JWT — signs/verifies the cookie issued after a successful
+    # wallet login (see app/auth/session.py). Shared with apps/web's
+    # SESSION_JWT_SECRET so Next.js middleware can verify the same token
+    # at the edge without a round-trip to the API.
+    session_secret_key: str = "dev-insecure-secret-change-me"
+    session_ttl_seconds: int = 60 * 60 * 24 * 7
+
+    # Wallet auth needs no third-party config (unlike Clerk), so there's no
+    # natural "unconfigured -> skip" state anymore. AUTH_DISABLED is the
+    # explicit opt-out that preserves zero-config local dev: true resolves
+    # every request to a fixed seeded dev-org/dev-user, exactly like today's
+    # "Clerk env vars unset" behavior did.
+    auth_disabled: bool = True
 
     openai_api_key: str = ""
 
@@ -28,12 +38,6 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
-
-    @property
-    def auth_enabled(self) -> bool:
-        """Clerk verification is skipped when unconfigured, so local dev
-        never needs a live Clerk project just to hit the API."""
-        return bool(self.clerk_jwks_url and self.clerk_issuer)
 
 
 @lru_cache

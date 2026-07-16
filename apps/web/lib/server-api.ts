@@ -1,15 +1,19 @@
-import { auth } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
 import { apiFetch } from "./api-client";
 
-/** Server-side fetch helper — attaches the Clerk session token when one
- * exists. In local dev (no Clerk keys configured) this resolves to no
- * token, which the API accepts since auth is skipped when unconfigured. */
+/** Server-side (RSC) fetch helper. A server-to-server fetch doesn't
+ * automatically carry the visiting browser's cookies, so this forwards the
+ * incoming request's Cookie header by hand — that's what lets FastAPI see
+ * the session cookie issued by POST /auth/wallet/verify. */
 export async function serverApiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  let token: string | null = null;
-  try {
-    token = await (await auth()).getToken();
-  } catch {
-    token = null;
-  }
-  return apiFetch<T>(path, init, token);
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore.toString();
+
+  return apiFetch<T>(path, {
+    ...init,
+    headers: {
+      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+      ...init?.headers,
+    },
+  });
 }

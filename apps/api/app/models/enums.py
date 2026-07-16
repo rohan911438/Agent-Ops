@@ -91,3 +91,18 @@ class UserRole(str, enum.Enum):
 
 class WalletChain(str, enum.Enum):
     BASE = "base"
+
+
+class AuthProviderType(str, enum.Enum):
+    """Identity provider that authenticated a user. WALLET (OKX) is the only
+    one implemented today — see app/auth/providers/. The rest are reserved
+    extension points: adding one means a new provider module + route, no
+    changes to app/auth/session.py, app/auth/deps.py, or any existing
+    router (see docs/Architecture.md)."""
+
+    WALLET = "wallet"
+    GOOGLE = "google"
+    MICROSOFT = "microsoft"
+    GITHUB = "github"
+    OKTA = "okta"
+    SAML = "saml"

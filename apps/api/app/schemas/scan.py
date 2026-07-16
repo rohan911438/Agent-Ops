@@ -22,6 +22,7 @@ class ScanRead(BaseModel):
     agent_ids: list[str]
     summary: dict | None
     executive_report: dict | None
+    optimization_plan: dict | None
     error_message: str | None
     created_at: datetime
     completed_at: datetime | None

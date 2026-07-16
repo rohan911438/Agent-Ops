@@ -1,8 +1,8 @@
 # API Design
 
-Base URL: `/api/v1`. All routes except `/healthz` and `/auth/webhook` are org-scoped via the caller's resolved organization (`app/api/deps.py:get_current_org`).
+Base URL: `/api/v1`. All routes except `/healthz` and `/auth/*` are org-scoped via the caller's resolved organization (`app/api/deps.py:get_current_org`).
 
-Auth: Bearer JWT issued by Clerk, verified against Clerk's JWKS. When `CLERK_JWKS_URL`/`CLERK_ISSUER` are unset (local dev), verification is skipped and every request resolves to the seeded `dev-org` — no token required.
+Auth: an httpOnly session cookie (`agentops_session`) issued by `POST /auth/wallet/verify`, verified as an HS256 JWT (`app/auth/session.py`). A `Authorization: Bearer <token>` header works the same way for non-browser callers. When `AUTH_DISABLED=true` (local dev default), verification is skipped and every request resolves to the seeded `dev-org`/`dev-user` — no login required. See `Architecture.md` for the full wallet login flow.
 
 ## Agents
 
@@ -43,7 +43,7 @@ Auth: Bearer JWT issued by Clerk, verified against Clerk's JWKS. When `CLERK_JWK
 | PATCH/DELETE | `/settings/users/{id}` | Change role / remove |
 | GET/POST | `/settings/api-keys` | List / create — the raw key is returned **once**, at creation, then only its hash is stored |
 | DELETE | `/settings/api-keys/{id}` | Revoke |
-| GET/POST | `/settings/wallet` | Connect a Base wallet address — no on-chain interaction |
+| GET | `/settings/wallet` | The workspace's connected wallet — populated at login, not manually connected. Includes `last_verified_at`. |
 
 ## Health Scans
 
@@ -52,8 +52,8 @@ Auth: Bearer JWT issued by Clerk, verified against Clerk's JWKS. When `CLERK_JWK
 | GET | `/scans` | List scans for the org, newest first |
 | POST | `/scans/upload` | Multipart `file` (JSON/YAML agent manifest, 2MB cap). Parses synchronously; 422 on malformed input. Returns the scan `PENDING`. |
 | POST | `/scans/github` | Body `{ "repo_url", "github_token"? }`. Tests the connection synchronously; 422 if unreachable. Returns the scan `PENDING`. |
-| POST | `/scans/{id}/start` | 202. Schedules the scan (parse → ingest → recommend → report) via FastAPI `BackgroundTasks`; 409 if already started. |
-| GET | `/scans/{id}` | Poll for status/progress/summary/executive_report. 404 if not found or wrong org. |
+| POST | `/scans/{id}/start` | 202. Schedules the scan (discover → analyze → reason → optimize → report) via FastAPI `BackgroundTasks`; 409 if already started. |
+| GET | `/scans/{id}` | Poll for status/progress/summary/executive_report/optimization_plan. 404 if not found or wrong org. |
 
 Scan-ingested agents become real `Agent` rows (`source=connector`) through the normal service layer — they show up in `/agents`, `/overview`, and `/recommendations` like any other agent. See `Architecture.md`'s "Health Scan flow" section.
 
@@ -68,7 +68,12 @@ Scan-ingested agents become real `Agent` rows (`source=connector`) through the n
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/auth/webhook` | Clerk webhook receiver; syncs `organization.created` and `user.created` events into local tables |
+| POST | `/auth/wallet/nonce` | Body `{ "address" }`. Issues a DB-backed, single-use nonce + human-readable message for the wallet to sign. |
+| POST | `/auth/wallet/verify` | Body `{ "address", "signature", "nonce" }`. Verifies the signature, finds-or-creates the workspace, sets the session cookie, returns `{ user, organization, created }`. |
+| GET | `/auth/session` | Returns the current session's user + organization. 401 if not authenticated (never, when `AUTH_DISABLED=true`). |
+| POST | `/auth/logout` | Clears the session cookie. |
+
+Only `WALLET` is implemented today (`app/auth/providers/wallet.py`); `AuthProviderType` reserves `GOOGLE`/`MICROSOFT`/`GITHUB`/`OKTA`/`SAML` as future sibling providers — see `Architecture.md`.
 
 ## Versioning
 

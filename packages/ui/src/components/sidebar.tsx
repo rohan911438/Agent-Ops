@@ -31,10 +31,10 @@ export function Sidebar({
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-2.5 rounded px-3 py-2 text-xs uppercase tracking-wider font-semibold transition-all duration-200 border border-transparent",
                 isActive
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                  ? "bg-white text-black border-white font-bold"
+                  : "text-muted-foreground hover:bg-zinc-900/60 hover:text-foreground",
               )}
             >
               {item.icon}

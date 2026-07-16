@@ -34,6 +34,7 @@ from app.models.user import User
 from app.services.connector_service import ADAPTER_REGISTRY
 from app.services.recommendation_service import refresh_recommendations
 from app.services.scan.cost_estimator import estimate_monthly_cost_cents
+from app.services.scan.optimization_plan_service import generate_optimization_plan
 from app.services.scan.parsers import ScanParseError, parse_agent_definitions
 from app.services.scan.report_service import generate_executive_report
 
@@ -247,45 +248,62 @@ async def _fetch_raw_agents(scan: HealthScan) -> list[dict]:
 
 
 async def run_scan(org_id: str, scan_id: str) -> None:
+    """Orchestrates the ASP pipeline end to end. The current_step messages
+    below are a friendlier narration of the same real work this function
+    has always done (discovery -> analysis -> reasoning -> optimization ->
+    reporting) — no stage claims analysis that isn't actually happening;
+    see docs/Architecture.md for the layer-to-module mapping.
+    """
     async with async_session_factory() as db:
         scan = await get_scan(db, org_id, scan_id)
         if scan is None:
             return
         try:
-            scan.current_step = "Parsing agent definitions"
+            # --- Discovery: parse the source, ingest agents as real rows ---
+            scan.current_step = "Discovering AI Assets"
             await db.commit()
             raw_agents = await _fetch_raw_agents(scan)
-
-            scan.current_step = "Ingesting agents"
-            await db.commit()
             agent_ids = await _ingest_agents(db, org_id, scan, raw_agents)
             scan.agent_ids = agent_ids
-            await db.commit()
-
-            scan.status = ScanStatus.ANALYZING
-            scan.current_step = "Running the recommendation engine"
             await db.commit()
 
             agents_result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
             agents = list(agents_result.scalars().all())
 
+            # --- Analysis: cost data was computed during ingestion above ---
+            scan.status = ScanStatus.ANALYZING
+            scan.current_step = "Evaluating Cost Efficiency"
+            await db.commit()
+
+            # --- Reasoning: the swappable rule engine (recommendation_service) ---
+            scan.current_step = "Detecting Risks"
+            await db.commit()
             await refresh_recommendations(db, org_id)
             recs_result = await db.execute(
                 select(Recommendation).where(Recommendation.agent_id.in_(agent_ids))
             )
             recommendations = list(recs_result.scalars().all())
 
+            scan.current_step = "Mapping Agent Relationships"
+            await db.commit()
             summary = _build_summary(agents, recommendations)
             scan.summary = summary
             await db.commit()
 
+            # --- Reporting ---
             scan.status = ScanStatus.GENERATING_REPORT
-            scan.current_step = "Generating executive report"
+            scan.current_step = "Generating Executive Report"
+            await db.commit()
+            report = await generate_executive_report(agents, recommendations, summary)
+            scan.executive_report = report
             await db.commit()
 
-            report = await generate_executive_report(agents, recommendations, summary)
+            # --- Optimization: dedicated implementation plan ---
+            scan.current_step = "Building Optimization Plan"
+            await db.commit()
+            optimization_plan = await generate_optimization_plan(recommendations, report)
+            scan.optimization_plan = optimization_plan
 
-            scan.executive_report = report
             scan.status = ScanStatus.COMPLETED
             scan.current_step = None
             scan.completed_at = datetime.now(timezone.utc)

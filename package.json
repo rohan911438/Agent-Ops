@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "AgentOps Cloud — The Enterprise Control Plane for AI Agents.",
+  "packageManager": "npm@11.13.0",
   "engines": {
     "node": ">=20"
   },

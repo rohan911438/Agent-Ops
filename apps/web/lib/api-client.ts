@@ -9,20 +9,19 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiFetch<T>(
-  path: string,
-  init?: RequestInit,
-  token?: string | null,
-): Promise<T> {
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   // FormData bodies need the browser to set their own multipart boundary —
   // a forced "application/json" here would silently break file uploads.
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
 
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
+    // Carries the httpOnly session cookie FastAPI set on login — see
+    // app/auth/session.py. Works cross-port in local dev and cross-subdomain
+    // in prod because both are same-site (SameSite=Lax).
+    credentials: "include",
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
     cache: "no-store",

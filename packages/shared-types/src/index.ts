@@ -102,14 +102,52 @@ export type Workspace = z.infer<typeof WorkspaceSchema>;
 export const UserRole = z.enum(["owner", "admin", "member"]);
 export type UserRole = z.infer<typeof UserRole>;
 
+export const AuthProviderType = z.enum(["wallet", "google", "microsoft", "github", "okta", "saml"]);
+export type AuthProviderType = z.infer<typeof AuthProviderType>;
+
 export const UserSchema = z.object({
   id: z.string(),
   email: z.string(),
   name: z.string(),
   role: UserRole,
+  wallet_address: z.string().nullable(),
+  auth_provider: AuthProviderType,
+  last_login_at: z.string().nullable(),
   created_at: z.string(),
 });
 export type User = z.infer<typeof UserSchema>;
+
+export const SessionOrganizationSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+});
+export type SessionOrganization = z.infer<typeof SessionOrganizationSchema>;
+
+export const SessionUserSchema = z.object({
+  id: z.string(),
+  wallet_address: z.string().nullable(),
+  auth_provider: AuthProviderType,
+  email: z.string(),
+  name: z.string(),
+  role: UserRole,
+  last_login_at: z.string().nullable(),
+  created_at: z.string(),
+});
+export type SessionUser = z.infer<typeof SessionUserSchema>;
+
+export const SessionReadSchema = z.object({
+  user: SessionUserSchema,
+  organization: SessionOrganizationSchema,
+  created: z.boolean().optional(),
+});
+export type SessionRead = z.infer<typeof SessionReadSchema>;
+
+export const WalletNonceResponseSchema = z.object({
+  nonce: z.string(),
+  message: z.string(),
+});
+export type WalletNonceResponse = z.infer<typeof WalletNonceResponseSchema>;
 
 export const ApiKeySchema = z.object({
   id: z.string(),
@@ -124,6 +162,7 @@ export const WalletSchema = z.object({
   id: z.string(),
   chain: z.enum(["base"]),
   address: z.string(),
+  last_verified_at: z.string().nullable(),
   created_at: z.string(),
 });
 export type Wallet = z.infer<typeof WalletSchema>;
@@ -147,22 +186,81 @@ export const ScanStatus = z.enum([
 ]);
 export type ScanStatus = z.infer<typeof ScanStatus>;
 
-export const ExecutiveReportActionSchema = z.object({
+export const PriorityActionSchema = z.object({
   title: z.string(),
   rationale: z.string(),
   estimated_impact: z.string(),
 });
-export type ExecutiveReportAction = z.infer<typeof ExecutiveReportActionSchema>;
+export type PriorityAction = z.infer<typeof PriorityActionSchema>;
+
+export const CostAnalysisSchema = z.object({
+  summary: z.string(),
+  model_downgrade_suggestions: z.array(z.string()),
+});
+export type CostAnalysis = z.infer<typeof CostAnalysisSchema>;
+
+export const SecurityRisksSchema = z.object({
+  summary: z.string(),
+  high_risk_agents: z.array(z.string()),
+});
+export type SecurityRisks = z.infer<typeof SecurityRisksSchema>;
+
+export const OperationalRisksSchema = z.object({
+  summary: z.string(),
+  orphaned_agents: z.array(z.string()),
+  redundant_workflows: z.array(z.string()),
+});
+export type OperationalRisks = z.infer<typeof OperationalRisksSchema>;
+
+export const OptimizationOpportunitiesSchema = z.object({
+  summary: z.string(),
+  merge_candidates: z.array(z.string()),
+});
+export type OptimizationOpportunities = z.infer<typeof OptimizationOpportunitiesSchema>;
 
 export const ExecutiveReportSchema = z.object({
-  money_wasted: z.string(),
-  risk_summary: z.string(),
-  merge_candidates: z.array(z.string()),
-  model_downgrades: z.array(z.string()),
-  redundant_workflows: z.array(z.string()),
-  top_actions: z.array(ExecutiveReportActionSchema),
+  executive_summary: z.string(),
+  organization_overview: z.string(),
+  cost_analysis: CostAnalysisSchema,
+  security_risks: SecurityRisksSchema,
+  operational_risks: OperationalRisksSchema,
+  optimization_opportunities: OptimizationOpportunitiesSchema,
+  business_impact: z.string(),
+  priority_actions: z.array(PriorityActionSchema),
+  health_score: z.number().int(),
 });
 export type ExecutiveReport = z.infer<typeof ExecutiveReportSchema>;
+
+export const OptimizationPlanItemSchema = z.object({
+  id: z.string(),
+  type: RecommendationType,
+  title: z.string(),
+  business_problem: z.string(),
+  business_value: z.string(),
+  technical_reason: z.string(),
+  recommended_action: z.string(),
+  priority: z.enum(["high", "medium", "low"]),
+  estimated_cost_savings: z.string(),
+  estimated_engineering_effort: z.string(),
+  risk_level: z.enum(["low", "medium", "high"]),
+  dependencies: z.array(z.string()),
+  confidence_score: z.number().int(),
+  rollback_strategy: z.string(),
+  expected_kpi_improvement: z.string(),
+  timeline: z.string(),
+  expected_roi: z.string(),
+});
+export type OptimizationPlanItem = z.infer<typeof OptimizationPlanItemSchema>;
+
+export const OptimizationPlanSchema = z.object({
+  summary: z.string(),
+  total_estimated_monthly_savings: z.string(),
+  immediate_wins: z.array(OptimizationPlanItemSchema),
+  thirty_day_plan: z.array(OptimizationPlanItemSchema),
+  ninety_day_improvements: z.array(OptimizationPlanItemSchema),
+  long_term_architecture: z.array(OptimizationPlanItemSchema),
+});
+export type OptimizationPlan = z.infer<typeof OptimizationPlanSchema>;
 
 export const ScanSummarySchema = z.object({
   agent_count: z.number().int(),
@@ -187,6 +285,7 @@ export const HealthScanSchema = z.object({
   agent_ids: z.array(z.string()),
   summary: ScanSummarySchema.nullable(),
   executive_report: ExecutiveReportSchema.nullable(),
+  optimization_plan: OptimizationPlanSchema.nullable(),
   error_message: z.string().nullable(),
   created_at: z.string(),
   completed_at: z.string().nullable(),

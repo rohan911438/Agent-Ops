@@ -8,7 +8,7 @@ from app.models.api_key import ApiKey
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.wallet import Wallet
-from app.schemas.settings import ApiKeyCreate, UserInvite, UserRoleUpdate, WalletConnect, WorkspaceUpdate
+from app.schemas.settings import ApiKeyCreate, UserInvite, UserRoleUpdate, WorkspaceUpdate
 
 
 async def update_workspace(db: AsyncSession, org: Organization, data: WorkspaceUpdate) -> Organization:
@@ -72,20 +72,8 @@ async def revoke_api_key(db: AsyncSession, api_key: ApiKey) -> None:
 
 
 async def get_wallet(db: AsyncSession, org_id: str) -> Wallet | None:
+    """The workspace's connected (and auth) wallet. Populated at login time
+    by app/auth/providers/wallet.py — there's no manual "connect" endpoint
+    anymore since the wallet that logs you in *is* the connected wallet."""
     result = await db.execute(select(Wallet).where(Wallet.org_id == org_id))
     return result.scalar_one_or_none()
-
-
-async def connect_wallet(db: AsyncSession, org_id: str, data: WalletConnect) -> Wallet:
-    existing = await get_wallet(db, org_id)
-    if existing:
-        existing.address = data.address
-        existing.chain = data.chain
-        await db.commit()
-        await db.refresh(existing)
-        return existing
-    wallet = Wallet(org_id=org_id, chain=data.chain, address=data.address)
-    db.add(wallet)
-    await db.commit()
-    await db.refresh(wallet)
-    return wallet

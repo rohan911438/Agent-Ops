@@ -1,26 +1,46 @@
 import { NextResponse, type NextMiddleware } from "next/server";
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { jwtVerify } from "jose";
 
-const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)"]);
+const SESSION_COOKIE_NAME = "agentops_session";
+const PUBLIC_PATHS = new Set(["/"]);
 
-// Clerk isn't configured until NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY /
-// CLERK_SECRET_KEY are set (see apps/web/.env.example). Rather than throw
-// on every request in local dev, fall through to a no-op middleware —
-// mirrors the API's auth_enabled check in app/config.py.
-const clerkConfigured = Boolean(
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY,
+// Mirrors apps/api's AUTH_DISABLED default (true) so a fresh clone with no
+// env configured still loads the dashboard directly — see
+// docs/Architecture.md. Verifies the same HS256 cookie FastAPI issues
+// (SESSION_JWT_SECRET must match the API's SESSION_SECRET_KEY) at the edge,
+// with no round-trip to the API.
+const authDisabled = process.env.AUTH_DISABLED !== "false";
+const secret = new TextEncoder().encode(
+  process.env.SESSION_JWT_SECRET || "dev-insecure-secret-change-me",
 );
 
-const middleware: NextMiddleware = clerkConfigured
-  ? clerkMiddleware(async (auth, req) => {
-      if (!isPublicRoute(req)) {
-        await auth.protect();
-      }
-    })
-  : () => NextResponse.next();
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.has(pathname) || pathname.startsWith("/_next");
+}
+
+const middleware: NextMiddleware = async (req) => {
+  const { pathname } = req.nextUrl;
+  if (authDisabled || isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (token) {
+    try {
+      await jwtVerify(token, secret);
+      return NextResponse.next();
+    } catch {
+      // falls through to the redirect below — invalid/expired session
+    }
+  }
+
+  const url = req.nextUrl.clone();
+  url.pathname = "/";
+  return NextResponse.redirect(url);
+};
 
 export default middleware;
 
 export const config = {
-  matcher: ["/((?!_next|.*\\..*).*)", "/(api|trpc)(.*)"],
+  matcher: ["/((?!_next|.*\\..*).*)"],
 };

@@ -9,24 +9,24 @@ export interface StepperStep {
 }
 
 const circleClasses: Record<StepState, string> = {
-  complete: "bg-emerald-500 text-white",
-  active: "bg-primary text-primary-foreground",
-  pending: "bg-muted text-muted-foreground",
-  error: "bg-red-500 text-white",
+  complete: "bg-white text-black border border-white",
+  active: "bg-zinc-800 text-white border border-zinc-700 font-medium",
+  pending: "bg-zinc-950 text-zinc-600 border border-zinc-900",
+  error: "bg-black text-white border border-white border-dashed font-bold",
 };
 
 const connectorClasses: Record<StepState, string> = {
-  complete: "bg-emerald-500",
-  active: "bg-border",
-  pending: "bg-border",
-  error: "bg-border",
+  complete: "bg-white",
+  active: "bg-zinc-800",
+  pending: "bg-zinc-900",
+  error: "bg-zinc-900",
 };
 
 const labelClasses: Record<StepState, string> = {
-  complete: "text-foreground",
-  active: "text-foreground font-medium",
-  pending: "text-muted-foreground",
-  error: "text-red-500 font-medium",
+  complete: "text-zinc-200",
+  active: "text-white font-medium",
+  pending: "text-zinc-600",
+  error: "text-white font-medium underline decoration-zinc-500",
 };
 
 function StepIcon({ state, index }: { state: StepState; index: number }) {

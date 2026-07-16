@@ -5,25 +5,27 @@ agentops-cloud/
 ├── apps/
 │   ├── web/                       Next.js 15 app (App Router)
 │   │   ├── app/
-│   │   │   ├── (marketing)/       Public landing page (primary CTA → Health Scan)
-│   │   │   └── (app)/             Clerk-gated shell: health-scan, overview, agents, recommendations, activity, settings
+│   │   │   ├── (marketing)/       Public landing page (single primary CTA → Connect OKX Wallet)
+│   │   │   └── (app)/             Session-gated shell: health-scan, overview, agents, recommendations, activity, settings
 │   │   ├── components/            App-specific client components (sidebar nav, tabs, forms)
-│   │   │   └── health-scan/       data-source-picker.tsx, scan-status.tsx
-│   │   ├── lib/                   api-client.ts (browser fetch), server-api.ts (RSC fetch + Clerk token)
-│   │   └── middleware.ts          Clerk route protection
+│   │   │   ├── auth/               connect-wallet-button.tsx, sign-out-button.tsx
+│   │   │   └── health-scan/       data-source-picker.tsx, scan-status.tsx, optimization-plan.tsx
+│   │   ├── lib/                   api-client.ts (browser fetch), server-api.ts (RSC fetch + cookie forwarding), okx-wallet.ts
+│   │   └── middleware.ts          Session-cookie route protection (edge JWT verify via `jose`)
 │   │
 │   └── api/                       FastAPI app
 │       ├── app/
-│       │   ├── models/            SQLAlchemy models (10 tables, incl. health_scan.py) + enums
-│       │   ├── schemas/           Pydantic request/response schemas
-│       │   ├── api/v1/            Route handlers, one file per resource (incl. scans.py)
+│       │   ├── models/            SQLAlchemy models (incl. health_scan.py, auth_challenge.py) + enums
+│       │   ├── schemas/           Pydantic request/response schemas (incl. auth.py)
+│       │   ├── api/v1/            Route handlers, one file per resource (incl. scans.py, auth.py)
 │       │   ├── services/          Business logic — agent, recommendation, activity, connector, settings, llm, scan_service
-│       │   │   ├── scan/          parsers.py, cost_estimator.py, report_service.py
+│       │   │   ├── scan/          parsers.py, cost_estimator.py, report_service.py, optimization_plan_service.py
 │       │   │   └── connectors/    github_adapter.py — the one real, registered ConnectorAdapter
-│       │   ├── auth/clerk.py      JWKS-based JWT verification (skipped if unconfigured)
+│       │   ├── auth/               session.py (JWT issue/verify), providers/wallet.py (OKX challenge-response)
 │       │   ├── jobs/tasks.py      Background job entry points (plain functions today, Celery-ready)
 │       │   ├── database.py, config.py, main.py
 │       ├── alembic/                Migrations
+│       ├── tests/                  pytest + httpx ASGI tests (auth flow, report/plan fallback shape)
 │       └── data/                   SQLite database file lives here (gitignored)
 │
 ├── packages/
