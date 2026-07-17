@@ -66,6 +66,22 @@ No marketplace, no chat interface, no billing, no notification center, no vanity
 
 No Docker, no Postgres, no Redis required — the API runs against a local SQLite file and auth is skipped (`AUTH_DISABLED=true` by default) so the dashboard loads directly with no wallet needed. Set it to `false` in both `apps/api/.env` and `apps/web/.env` (matching `SESSION_SECRET_KEY`/`SESSION_JWT_SECRET`) to exercise real OKX Wallet login. See [`docs/TechnicalDecisions.md`](docs/TechnicalDecisions.md) for why, and [`docs/Contributing.md`](docs/Contributing.md) for manual setup steps.
 
+### Testing the Health Scan's GitHub connector
+
+`app/services/connectors/github_adapter.py` does a real, static scan of a repo's **root-level** `requirements.txt` / `pyproject.toml` / `package.json` for known agent-framework package markers — it's a one-time heuristic, not real runtime usage tracking, and every agent it produces is tagged `needs_review: true`. Don't expect it to reflect actual agent activity, and don't expect a hit on a monorepo whose manifest lives in a subdirectory (root-only, by design).
+
+Health Scan → New Scan → GitHub → paste `owner/repo` or the full URL. No token needed for these (60 unauthenticated GitHub API calls/hour is plenty for a handful of runs). Verified live against the adapter's exact logic:
+
+| Framework | Repo | Detected via |
+|---|---|---|
+| LangGraph | `langchain-ai/react-agent` | `pyproject.toml` contains `langgraph` |
+| LangGraph | `langchain-ai/langgraph-swarm-py` | same |
+| CrewAI | `crewAIInc/crewAI` | `pyproject.toml` contains `crewai` |
+| OpenAI Agents SDK | `openai/openai-agents-python` | `pyproject.toml` contains `openai-agents` |
+| AutoGen | `disler/multi-agent-postgres-data-analytics` | `pyproject.toml` contains `pyautogen` |
+
+Each produces exactly one detected agent, named `"{repo} ({framework})"`, with no cost/model/owner data. For the honest zero-hit path, scan `vinta/awesome-python` — no matching manifest, so the scan completes with 0 agents detected rather than faking a result.
+
 ## How it's built
 
 ```
