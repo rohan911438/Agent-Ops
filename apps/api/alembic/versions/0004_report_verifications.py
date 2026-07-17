@@ -31,7 +31,11 @@ def upgrade() -> None:
         sa.Column("block_number", sa.Integer(), nullable=True),
         sa.Column(
             "status",
-            sa.Enum("pending", "confirmed", "failed", name="verificationstatus"),
+            # Labels are the enum member NAME (uppercase), matching what
+            # SQLAlchemy's Enum(SomePythonEnum) actually writes by default —
+            # see 0003_wallet_auth.py's AUTH_PROVIDER_ENUM comment. Postgres
+            # enforces this list for real via a native ENUM type.
+            sa.Enum("PENDING", "CONFIRMED", "FAILED", name="verificationstatus"),
             nullable=False,
         ),
         sa.Column("explorer_url", sa.String(500), nullable=True),

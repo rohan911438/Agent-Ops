@@ -18,6 +18,7 @@ import { apiFetch, ApiError } from "@/lib/api-client";
 import {
   connectWallet,
   isOkxWalletInstalled,
+  isWalletRejection,
   signMessage,
   WalletNotInstalledError,
 } from "@/lib/okx-wallet";
@@ -56,6 +57,8 @@ export function ConnectWalletButton({
       return;
     }
 
+    let currentStep: ConnectStep = "connecting";
+
     try {
       setStep("connecting");
       const address = await connectWallet();
@@ -65,9 +68,17 @@ export function ConnectWalletButton({
         body: JSON.stringify({ address }),
       });
 
+      // OKX Wallet requires a *second*, separate approval here — connecting
+      // the account (above) does not sign anything. If a user closes or
+      // rejects this second popup, the extension can still show the site as
+      // "connected" (that's a persistent, independent state), which is why
+      // the error below calls out signing specifically instead of implying
+      // the connection itself failed.
+      currentStep = "awaiting-signature";
       setStep("awaiting-signature");
       const signature = await signMessage(address, message);
 
+      currentStep = "verifying";
       setStep("verifying");
       await apiFetch<SessionRead>("/auth/wallet/verify", {
         method: "POST",
@@ -77,12 +88,28 @@ export function ConnectWalletButton({
       router.push("/overview");
       router.refresh();
     } catch (err) {
+      // Logged regardless of which branch below fires — the message shown
+      // to the user is deliberately generic in the non-rejection cases, but
+      // the real cause (network failure, proxy error, unexpected shape)
+      // should still be visible in the console for diagnosis. Previously
+      // every non-ApiError, non-install failure was labeled a wallet
+      // rejection, which mislabeled real network/server failures as user
+      // action and made them impossible to tell apart from the console.
+      console.error(`Wallet connect failed during "${currentStep}":`, err);
+
       if (err instanceof WalletNotInstalledError) {
         setShowInstallDialog(true);
       } else if (err instanceof ApiError) {
         setError("Could not verify that signature — please try connecting again.");
-      } else {
+      } else if (isWalletRejection(err) && currentStep === "connecting") {
         setError("Connection was cancelled or rejected in the wallet.");
+      } else if (isWalletRejection(err) && currentStep === "awaiting-signature") {
+        setError(
+          "Your wallet connected, but the sign-in request was cancelled or rejected — a second " +
+            "approval (to sign a message, not a transaction) is required. Please try again.",
+        );
+      } else {
+        setError("Something went wrong reaching the server — please try again.");
       }
       setStep("idle");
     }

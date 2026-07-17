@@ -43,3 +43,6 @@ Thumbs.db
 packages/contracts/artifacts/
 packages/contracts/cache/
 packages/contracts/typechain-types/
+
+.vercel
+.env*

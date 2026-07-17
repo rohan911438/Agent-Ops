@@ -16,6 +16,16 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+# SQLAlchemy's Enum(SomeEnumClass) stores/reads the member NAME (e.g.
+# "OWNER"), not its .value ("owner"), unless values_callable overrides that
+# — see 0003_wallet_auth.py's AUTH_PROVIDER_ENUM comment for the original
+# discovery. On SQLite this was invisible (create_constraint defaults to
+# False there, so these labels never became a real CHECK constraint), but
+# Postgres has a native ENUM type and enforces this list for real — so
+# every label below is the upper-cased member NAME, matching what the ORM
+# actually writes, not the lower-cased .value that reads more naturally.
+
+
 def upgrade() -> None:
     op.create_table(
         "organizations",
@@ -36,7 +46,7 @@ def upgrade() -> None:
         sa.Column("clerk_user_id", sa.String(255), nullable=True),
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("name", sa.String(255), nullable=False),
-        sa.Column("role", sa.Enum("owner", "admin", "member", name="userrole"), nullable=False),
+        sa.Column("role", sa.Enum("OWNER", "ADMIN", "MEMBER", name="userrole"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("clerk_user_id"),
     )
@@ -51,21 +61,21 @@ def upgrade() -> None:
         sa.Column(
             "framework",
             sa.Enum(
-                "openai_agents", "langgraph", "crewai", "autogen", "n8n", "custom", "mcp",
-                "internal", name="agentframework",
+                "OPENAI_AGENTS", "LANGGRAPH", "CREWAI", "AUTOGEN", "N8N", "CUSTOM", "MCP",
+                "INTERNAL", name="agentframework",
             ),
             nullable=False,
         ),
         sa.Column("owner_user_id", sa.String(), sa.ForeignKey("users.id"), nullable=True),
         sa.Column(
             "status",
-            sa.Enum("active", "idle", "error", "archived", name="agentstatus"),
+            sa.Enum("ACTIVE", "IDLE", "ERROR", "ARCHIVED", name="agentstatus"),
             nullable=False,
         ),
         sa.Column("monthly_cost_cents", sa.Integer(), nullable=False),
         sa.Column("health_score", sa.Integer(), nullable=False),
-        sa.Column("risk_level", sa.Enum("low", "medium", "high", name="risklevel"), nullable=False),
-        sa.Column("source", sa.Enum("manual", "connector", name="agentsource"), nullable=False),
+        sa.Column("risk_level", sa.Enum("LOW", "MEDIUM", "HIGH", name="risklevel"), nullable=False),
+        sa.Column("source", sa.Enum("MANUAL", "CONNECTOR", name="agentsource"), nullable=False),
         sa.Column("agent_metadata", sa.JSON(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -79,7 +89,7 @@ def upgrade() -> None:
         sa.Column("scope", sa.String(255), nullable=False),
         sa.Column("resource", sa.String(255), nullable=False),
         sa.Column(
-            "risk_level", sa.Enum("low", "medium", "high", name="risklevel"), nullable=False
+            "risk_level", sa.Enum("LOW", "MEDIUM", "HIGH", name="risklevel"), nullable=False
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
@@ -93,8 +103,8 @@ def upgrade() -> None:
         sa.Column(
             "type",
             sa.Enum(
-                "merge_duplicate", "reduce_cost", "unused_agent", "permission_risk",
-                "memory_optimization", "workflow_optimization", name="recommendationtype",
+                "MERGE_DUPLICATE", "REDUCE_COST", "UNUSED_AGENT", "PERMISSION_RISK",
+                "MEMORY_OPTIMIZATION", "WORKFLOW_OPTIMIZATION", name="recommendationtype",
             ),
             nullable=False,
         ),
@@ -103,7 +113,7 @@ def upgrade() -> None:
         sa.Column("impact_estimate", sa.String(255), nullable=False),
         sa.Column(
             "status",
-            sa.Enum("open", "dismissed", "applied", name="recommendationstatus"),
+            sa.Enum("OPEN", "DISMISSED", "APPLIED", name="recommendationstatus"),
             nullable=False,
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -132,14 +142,14 @@ def upgrade() -> None:
         sa.Column(
             "type",
             sa.Enum(
-                "github", "langgraph", "crewai", "openai_agents_sdk", "mcp", "docker",
-                "kubernetes", "aws", "azure", "gcp", name="connectortype",
+                "GITHUB", "LANGGRAPH", "CREWAI", "OPENAI_AGENTS_SDK", "MCP", "DOCKER",
+                "KUBERNETES", "AWS", "AZURE", "GCP", name="connectortype",
             ),
             nullable=False,
         ),
         sa.Column(
             "status",
-            sa.Enum("not_connected", "connected", "error", name="connectorstatus"),
+            sa.Enum("NOT_CONNECTED", "CONNECTED", "ERROR", name="connectorstatus"),
             nullable=False,
         ),
         sa.Column("config", sa.JSON(), nullable=False),
@@ -165,7 +175,7 @@ def upgrade() -> None:
         "wallets",
         sa.Column("id", sa.String(), primary_key=True),
         sa.Column("org_id", sa.String(), sa.ForeignKey("organizations.id"), nullable=False),
-        sa.Column("chain", sa.Enum("base", name="walletchain"), nullable=False),
+        sa.Column("chain", sa.Enum("BASE", name="walletchain"), nullable=False),
         sa.Column("address", sa.String(255), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )

@@ -21,6 +21,14 @@ export class WalletNotInstalledError extends Error {
   }
 }
 
+/** True only for a genuine EIP-1193 user rejection (code 4001) — e.g. the
+ * user dismissed the connect popup or declined to sign. Any other failure
+ * (network error, proxy/server error, malformed response) is NOT a wallet
+ * rejection and must not be reported to the user as one. */
+export function isWalletRejection(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code: unknown }).code === 4001;
+}
+
 export function isOkxWalletInstalled(): boolean {
   return typeof window !== "undefined" && typeof window.okxwallet !== "undefined";
 }

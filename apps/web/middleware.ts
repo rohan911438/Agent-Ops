@@ -60,5 +60,9 @@ const middleware: NextMiddleware = async (req) => {
 export default middleware;
 
 export const config = {
-  matcher: ["/((?!_next|.*\\..*).*)"],
+  // /api/v1/* is a same-origin rewrite proxy to the FastAPI backend (see
+  // next.config.ts) — that backend enforces its own session check, and
+  // gating it here too would block unauthenticated calls the login flow
+  // itself depends on (POST /api/v1/auth/wallet/nonce, /wallet/verify).
+  matcher: ["/((?!_next|api|.*\\..*).*)"],
 };
