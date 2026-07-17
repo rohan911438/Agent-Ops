@@ -52,3 +52,11 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
+
+
+# Alias for callers that probe the more conventional `/health` path (e.g. the
+# OnchainOS ASP reviewer) rather than `/healthz` — see
+# docs/ASP-6262-Service-Status.md.
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
