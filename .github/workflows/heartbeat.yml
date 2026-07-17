@@ -1,0 +1,80 @@
+name: OnchainOS ASP Heartbeat
+
+# Keeps OnchainOS ASP #6262 marked online by sending a recurring heartbeat.
+# Replaces a local Windows Task Scheduler job so the heartbeat no longer
+# depends on any one machine being powered on.
+#
+# Auth: onchainos CLI's non-interactive "AK" (API Key) login mode, which
+# reads OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE from the environment
+# instead of the email+OTP flow used for interactive logins. Confirmed via
+# the CLI's own --help text and binary strings — see the audit in the repo
+# history around this workflow's introduction.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: onchainos-heartbeat
+  cancel-in-progress: false
+
+env:
+  ONCHAINOS_VERSION: v4.2.6
+  CHAIN_INDEX: "196"
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Install onchainos CLI (checksum-verified)
+        run: |
+          set -euo pipefail
+          base="https://github.com/okx/onchainos-skills/releases/download/${ONCHAINOS_VERSION}"
+          asset="onchainos-x86_64-unknown-linux-gnu"
+
+          curl -fsSL -o onchainos "$base/$asset"
+          curl -fsSL -o checksums.txt "$base/checksums.txt"
+
+          grep " ${asset}\$" checksums.txt | sed "s/${asset}/onchainos/" > onchainos.sha256
+          sha256sum -c onchainos.sha256
+
+          chmod +x onchainos
+          echo "$PWD" >> "$GITHUB_PATH"
+
+      - name: Log in with API Key (non-interactive) and send heartbeat
+        env:
+          OKX_API_KEY: ${{ secrets.OKX_API_KEY }}
+          OKX_SECRET_KEY: ${{ secrets.OKX_SECRET_KEY }}
+          OKX_PASSPHRASE: ${{ secrets.OKX_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+
+          retry() {
+            local desc="$1"; shift
+            local max=3 attempt=1 delay=5
+            until "$@" > /tmp/out.json 2>/tmp/err.log; do
+              if [ "$attempt" -ge "$max" ]; then
+                echo "::error::$desc failed after $max attempts"
+                cat /tmp/err.log
+                return 1
+              fi
+              echo "::warning::$desc attempt $attempt failed, retrying in ${delay}s..."
+              attempt=$((attempt + 1))
+              sleep "$delay"
+              delay=$((delay * 2))
+            done
+          }
+
+          if [ -z "${OKX_API_KEY:-}" ] || [ -z "${OKX_SECRET_KEY:-}" ] || [ -z "${OKX_PASSPHRASE:-}" ]; then
+            echo "::error::OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE secrets are not set on this repo"
+            exit 1
+          fi
+
+          retry "wallet login" onchainos wallet login --force
+          echo "::notice::Login succeeded"
+
+          retry "agent heartbeat" onchainos agent heartbeat --chain-index "$CHAIN_INDEX"
+          echo "::notice::Heartbeat sent successfully"
+          cat /tmp/out.json
