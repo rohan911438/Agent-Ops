@@ -9,20 +9,31 @@ from app.config import get_settings
 from app.database import get_db
 from app.models.organization import Organization
 from app.models.user import User
+from app.services.settings_service import API_KEY_PREFIX, verify_api_key
 
 DbSession = AsyncSession
 
 
 @dataclass
 class AuthedIdentity:
-    user_id: str
+    # None for an API-key caller — a machine/agent caller isn't any one
+    # workspace human. Routes that need an actual User (get_current_user)
+    # simply don't resolve for that case; routes that only need org scope
+    # (e.g. app/api/v1/marketplace.py) work fine with user_id=None.
+    user_id: str | None
     org_id: str
+    auth_method: str = "session"  # "session" | "api_key"
 
 
-async def get_current_identity(request: Request) -> AuthedIdentity:
-    """Resolves who's calling from the session cookie set by
-    POST /auth/wallet/verify (see app/auth/session.py). Falls back to a
-    fixed seeded dev identity when AUTH_DISABLED=true — the same zero-config
+async def get_current_identity(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> AuthedIdentity:
+    """Resolves who's calling from either the session cookie set by
+    POST /auth/wallet/verify (see app/auth/session.py) — a human — or an
+    `Authorization: Bearer aoc_...` API key (see settings_service.
+    verify_api_key) — a machine/agent caller, e.g. a Task-Marketplace
+    worker invoking app/api/v1/marketplace.py. Falls back to a fixed
+    seeded dev identity when AUTH_DISABLED=true — the same zero-config
     local dev experience the Clerk-based auth used to provide when its env
     vars were unset.
     """
@@ -37,6 +48,12 @@ async def get_current_identity(request: Request) -> AuthedIdentity:
             token = authorization.removeprefix("Bearer ")
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+
+    if token.startswith(API_KEY_PREFIX):
+        api_key = await verify_api_key(db, token)
+        if api_key is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid API key")
+        return AuthedIdentity(user_id=None, org_id=api_key.org_id, auth_method="api_key")
 
     claims = verify_session_token(token)
     if claims is None:

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Badge, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@agentops/ui";
 import type { HealthScan } from "@agentops/shared-types";
 import { serverApiFetch } from "@/lib/server-api";
+import { PricingNote } from "@/components/pricing-note";
 
 const statusTone: Record<HealthScan["status"], "success" | "warning" | "danger" | "neutral"> = {
   pending: "neutral",
@@ -28,6 +29,8 @@ export default async function HealthScanPage() {
           <Button size="lg">New Scan</Button>
         </Link>
       </div>
+
+      <PricingNote />
 
       {scans.length === 0 ? (
         <p className="text-sm text-muted-foreground">

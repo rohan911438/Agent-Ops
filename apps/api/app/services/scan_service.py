@@ -12,12 +12,12 @@ POST /scans/{id}/start again is always safe and never duplicates agents.
 """
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session_factory
+from app import database
 from app.models.agent import Agent
 from app.models.agent_permission import AgentPermission
 from app.models.enums import (
@@ -37,6 +37,7 @@ from app.services.scan.cost_estimator import estimate_monthly_cost_cents
 from app.services.scan.optimization_plan_service import generate_optimization_plan
 from app.services.scan.parsers import ScanParseError, parse_agent_definitions
 from app.services.scan.report_service import generate_executive_report
+from app.services.verification_service import submit_report_for_verification
 
 
 class ScanAlreadyStartedError(Exception):
@@ -115,11 +116,61 @@ async def list_scans(db: AsyncSession, org_id: str) -> list[HealthScan]:
     return list(result.scalars().all())
 
 
+# In-flight statuses only — PENDING is a legitimate, possibly long-lived
+# "created but not yet started" state and must never be swept.
+_IN_FLIGHT_STATUSES = (ScanStatus.PARSING, ScanStatus.ANALYZING, ScanStatus.GENERATING_REPORT)
+STALE_SCAN_THRESHOLD = timedelta(minutes=30)
+
+
+async def sweep_stale_scans(db: AsyncSession) -> list[HealthScan]:
+    """Marks scans still stuck in an in-flight status well past any
+    realistic pipeline duration as FAILED with a clear error, instead of
+    leaving them hanging forever — see docs/Roadmap.md's "Scan reliability
+    without a queue broker" risk and docs/ASP-6262-Production-Readiness-
+    Audit.md finding M-3. A scan only gets stuck like this if the process
+    that was running its BackgroundTasks died mid-run (e.g. a restart);
+    run_scan's own try/except already handles every in-process failure.
+
+    Uses created_at, not an updated_at column (HealthScan has none — see
+    app/models/base.py's TimestampMixin) — an approximation, but the
+    pipeline normally completes in well under a minute (LLM calls now
+    time out at 25s, GitHub adapter calls at 10s each), so the 30-minute
+    threshold has wide margin before a merely-slow scan would be
+    misclassified as stuck.
+    """
+    cutoff = datetime.now(timezone.utc) - STALE_SCAN_THRESHOLD
+    result = await db.execute(
+        select(HealthScan).where(
+            HealthScan.status.in_(_IN_FLIGHT_STATUSES), HealthScan.created_at < cutoff
+        )
+    )
+    stale = list(result.scalars().all())
+    for scan in stale:
+        scan.status = ScanStatus.FAILED
+        scan.current_step = None
+        scan.error_message = (
+            "Scan was interrupted (likely a server restart) and did not complete. "
+            "Start it again to retry."
+        )
+    if stale:
+        await db.commit()
+    return stale
+
+
+_RESTARTABLE_STATUSES = (ScanStatus.PENDING, ScanStatus.FAILED)
+
+
 async def start_scan(db: AsyncSession, scan: HealthScan, background_tasks) -> HealthScan:
-    if scan.status != ScanStatus.PENDING:
+    """PENDING is the normal first start; FAILED is also accepted so a scan
+    that errored out (bad data, a transient chain/LLM issue, etc.) can be
+    retried without re-uploading — see docs/ASP-6262-Production-Readiness-
+    Audit.md finding M-1. Any other status means a scan is already running
+    or already finished successfully, neither of which should be re-queued."""
+    if scan.status not in _RESTARTABLE_STATUSES:
         raise ScanAlreadyStartedError(f"Scan is already {scan.status.value}")
     scan.status = ScanStatus.PARSING
     scan.current_step = "Queued"
+    scan.error_message = None
     await db.commit()
     await db.refresh(scan)
     background_tasks.add_task(run_scan, scan.org_id, scan.id)
@@ -254,7 +305,7 @@ async def run_scan(org_id: str, scan_id: str) -> None:
     reporting) — no stage claims analysis that isn't actually happening;
     see docs/Architecture.md for the layer-to-module mapping.
     """
-    async with async_session_factory() as db:
+    async with database.async_session_factory() as db:
         scan = await get_scan(db, org_id, scan_id)
         if scan is None:
             return
@@ -297,6 +348,10 @@ async def run_scan(org_id: str, scan_id: str) -> None:
             report = await generate_executive_report(agents, recommendations, summary)
             scan.executive_report = report
             await db.commit()
+
+            # --- Trust layer: anchor the report's hash on Base. Never
+            # blocks the scan — see app/services/verification_service.py. ---
+            await submit_report_for_verification(db, org_id, scan)
 
             # --- Optimization: dedicated implementation plan ---
             scan.current_step = "Building Optimization Plan"

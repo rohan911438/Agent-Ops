@@ -291,3 +291,30 @@ export const HealthScanSchema = z.object({
   completed_at: z.string().nullable(),
 });
 export type HealthScan = z.infer<typeof HealthScanSchema>;
+
+export const VerificationStatus = z.enum(["pending", "confirmed", "failed"]);
+
+export const ReportVerificationSchema = z.object({
+  id: z.string(),
+  health_scan_id: z.string(),
+  report_hash: z.string(),
+  contract_address: z.string(),
+  tx_hash: z.string().nullable(),
+  chain_id: z.number().int(),
+  block_number: z.number().int().nullable(),
+  status: VerificationStatus,
+  explorer_url: z.string().nullable(),
+  version: z.string(),
+  created_at: z.string(),
+});
+export type ReportVerification = z.infer<typeof ReportVerificationSchema>;
+
+export const ServicePriceSchema = z.object({
+  service_id: z.string(),
+  name: z.string(),
+  price: z.number().int(),
+  currency: z.string(),
+  enabled: z.boolean(),
+  note: z.string(),
+});
+export type ServicePrice = z.infer<typeof ServicePriceSchema>;

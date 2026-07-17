@@ -84,3 +84,11 @@ Every table carries an `org_id` foreign key, indexed. Row-level scoping is enfor
 Route groups split the public marketing site `(marketing)` from the authenticated app shell `(app)`, gated by session-verifying middleware (`apps/web/middleware.ts`) — Clerk is gone. Pages are React Server Components that fetch directly from the API (`lib/server-api.ts`); React Query is wired for client-side mutations (see `components/recommendation-actions.tsx` for the Apply/Dismiss flow). Design system primitives live in `packages/ui` and are never imported from shadcn directly inside `apps/web` — that indirection is what keeps the design system swappable later.
 
 See `FolderStructure.md` for the full tree, `API_Design.md` for the route reference, and `Roadmap.md` for what's explicitly out of scope right now.
+
+## On-chain trust layer
+
+Once the Health Scan's Executive Report is generated (`scan_service.run_scan`, right after `scan.executive_report` is set), `app/services/verification_service.py` hashes it (`sha256` of canonical JSON) and submits that hash to `EnterpriseReportRegistry` on Base Sepolia via `app/services/chain/base_sepolia_provider.py` (a `ChainProvider` ABC implementation, mirroring `LLMProvider`'s shape). The result — a `ReportVerification` row (`tx_hash`, `contract_address`, `block_number`, `status`) — is exposed at `GET /scans/{id}/verification` and rendered as a "Report Integrity" card on the Executive Report page (`components/health-scan/verification-card.tsx`).
+
+This never blocks the scan: any chain failure (unconfigured environment, unfunded wallet, RPC outage) leaves the row `FAILED` with an error message, and the Health Scan still completes — the same resilience contract the Executive Report's LLM fallback already uses. Enterprise data (org data, agents, report content) never leaves SQLite; only a hash and small metadata reach the chain. See `docs/SmartContracts.md`, `docs/ContractArchitecture.md`, and `docs/VerificationGuide.md`.
+
+`ServicePricing` (also on Base Sepolia) backs `GET /pricing`, which every service is priced at `0` through today — see `docs/FutureMonetization.md` for the payment-provider architecture prepared (but not activated) for later.

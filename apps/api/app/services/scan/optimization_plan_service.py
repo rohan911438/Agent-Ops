@@ -215,6 +215,27 @@ _TYPE_PROFILES: dict[RecommendationType, _TypeProfile] = {
         risk_level="medium",
         confidence=65,
     ),
+    RecommendationType.WORKFLOW_OPTIMIZATION: _TypeProfile(
+        business_problem="The same capability appears to have been rebuilt in a different framework, "
+        "splitting ownership and maintenance across two implementations of the same thing.",
+        business_value="Consolidating cross-framework overlap reduces duplicate maintenance burden and "
+        "gives the capability a single, unambiguous owner.",
+        recommended_action="Confirm with both agents' owners whether the overlap is intentional; if not, "
+        "standardize on one framework and retire the other implementation.",
+        expected_kpi_improvement="The capability has exactly one active implementation across all "
+        "frameworks.",
+        rollback_strategy="Retain the retired agent's full configuration for 30 days; restore it "
+        "immediately if the surviving agent doesn't cover the same use cases.",
+        dependencies=(
+            "Confirm both agents actually serve the same purpose before consolidating",
+            "Sign-off from each agent's owner",
+        ),
+        priority="medium",
+        effort="medium",
+        effort_label="Medium — roughly 2-4 engineer-days to confirm overlap and migrate to one framework.",
+        risk_level="medium",
+        confidence=60,
+    ),
 }
 
 _DEFAULT_PROFILE = _TypeProfile(

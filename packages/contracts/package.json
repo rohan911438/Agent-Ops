@@ -1,0 +1,29 @@
+{
+  "name": "@agentops/contracts",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AgentOps Cloud on-chain trust layer — report proof anchoring, service pricing metadata, and product version registry on Base.",
+  "license": "MIT",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "clean": "hardhat clean && rm -rf artifacts cache typechain-types",
+    "node": "hardhat node",
+    "deploy:baseSepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
+    "deploy:localhost": "hardhat run scripts/deploy.ts --network localhost",
+    "verify:baseSepolia": "hardhat run scripts/verify.ts --network baseSepolia",
+    "export-abi": "hardhat run scripts/export-abi.ts",
+    "generate-wallet": "hardhat run scripts/generate-wallet.ts",
+    "admin:update-price": "hardhat run scripts/admin/update-price.ts --network baseSepolia",
+    "admin:set-service-enabled": "hardhat run scripts/admin/set-service-enabled.ts --network baseSepolia",
+    "admin:register-version": "hardhat run scripts/admin/register-version.ts --network baseSepolia",
+    "admin:transfer-ownership": "hardhat run scripts/admin/transfer-ownership.ts --network baseSepolia"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.1.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,11 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.models.wallet import Wallet
 from app.schemas.settings import ApiKeyCreate, UserInvite, UserRoleUpdate, WorkspaceUpdate
+
+# Also the auth/deps.py bearer-token discriminator: a token starting with
+# this prefix is an API key, not a session JWT — see get_current_identity
+# and verify_api_key below.
+API_KEY_PREFIX = "aoc_"
 
 
 async def update_workspace(db: AsyncSession, org: Organization, data: WorkspaceUpdate) -> Organization:
@@ -52,7 +58,7 @@ async def list_api_keys(db: AsyncSession, org_id: str) -> list[ApiKey]:
 def _generate_key() -> tuple[str, str, str]:
     """Returns (full_key, key_hash, key_prefix). Only the hash is persisted."""
     raw = secrets.token_urlsafe(32)
-    full_key = f"aoc_{raw}"
+    full_key = f"{API_KEY_PREFIX}{raw}"
     key_hash = hashlib.sha256(full_key.encode()).hexdigest()
     return full_key, key_hash, full_key[:12]
 
@@ -69,6 +75,26 @@ async def create_api_key(db: AsyncSession, org_id: str, data: ApiKeyCreate, crea
 async def revoke_api_key(db: AsyncSession, api_key: ApiKey) -> None:
     await db.execute(delete(ApiKey).where(ApiKey.id == api_key.id))
     await db.commit()
+
+
+async def verify_api_key(db: AsyncSession, raw_key: str) -> ApiKey | None:
+    """Resolves a presented API key to its row (org via `.org_id`) — the
+    machine-caller auth path used instead of a wallet session cookie (see
+    app/api/deps.py get_current_identity). Previously API keys could be
+    created and listed but nothing ever verified one — this is the missing
+    half, and what api/v1/marketplace.py's service-invocation endpoint
+    authenticates with. See docs/ASP-6262-Production-Readiness-Audit.md
+    finding C-1."""
+    if not raw_key.startswith(API_KEY_PREFIX):
+        return None
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    result = await db.execute(select(ApiKey).where(ApiKey.key_hash == key_hash))
+    api_key = result.scalar_one_or_none()
+    if api_key is None:
+        return None
+    api_key.last_used_at = datetime.now(timezone.utc)
+    await db.commit()
+    return api_key
 
 
 async def get_wallet(db: AsyncSession, org_id: str) -> Wallet | None:

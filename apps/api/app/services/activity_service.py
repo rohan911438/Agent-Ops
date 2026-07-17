@@ -37,6 +37,7 @@ async def record_event(
     description: str,
     agent_id: str | None = None,
     event_metadata: dict | None = None,
+    tx_hash: str | None = None,
 ) -> ActivityEvent:
     event = ActivityEvent(
         org_id=org_id,
@@ -45,6 +46,7 @@ async def record_event(
         event_type=event_type,
         description=description,
         event_metadata=event_metadata or {},
+        tx_hash=tx_hash,
     )
     db.add(event)
     await db.commit()

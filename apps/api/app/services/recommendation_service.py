@@ -6,6 +6,7 @@ handful of explicit, explainable rules and writes Recommendation rows.
 Swapping in a learned model later only touches this module.
 """
 
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -98,6 +99,7 @@ async def refresh_recommendations(db: AsyncSession, org_id: str) -> list[Recomme
     created += await _rule_permission_risks(db, org_id, agents)
     created += await _rule_orphaned_agents(db, org_id, agents)
     created += await _rule_model_downgrade(db, org_id, agents)
+    created += await _rule_overlapping_workflows(db, org_id, agents)
     return created
 
 
@@ -183,16 +185,61 @@ async def _rule_high_cost_agents(
     return created
 
 
+def _name_tokens(name: str | None) -> set[str]:
+    return set(re.findall(r"[a-z]+", (name or "").lower()))
+
+
+def _strong_name_overlap(a_tokens: set[str], b_tokens: set[str]) -> bool:
+    """>=2 shared word tokens, or 1 shared token when both names are short
+    enough that sharing it is still meaningful (e.g. "Support Bot" vs.
+    "Support" — but not "Support Bot" vs. "Support Triage", where "support"
+    is one token out of four total). Same threshold used for both same-
+    framework duplicates and cross-framework workflow overlap below, so
+    "how similar is similar enough" has one definition, not two."""
+    if not a_tokens or not b_tokens:
+        return False
+    overlap = a_tokens & b_tokens
+    return len(overlap) >= 2 or (len(overlap) == 1 and len(a_tokens | b_tokens) <= 3)
+
+
 async def _rule_duplicate_agents(
     db: AsyncSession, org_id: str, agents: list[Agent]
 ) -> list[Recommendation]:
-    groups: dict[tuple, list[Agent]] = defaultdict(list)
+    """Same-framework near-duplicates, grouped by connected components of
+    strong name-token overlap (not just a shared first word — see
+    docs/ASP-6262-Production-Readiness-Audit.md finding M-4: the previous
+    first-word match false-positived on agents like "Support Bot" vs.
+    "Support Triage", which share only a generic first word)."""
+    parent: dict[str, str] = {a.id: a.id for a in agents}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: str, y: str) -> None:
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    for i, a in enumerate(agents):
+        if not a.name:
+            continue
+        a_tokens = _name_tokens(a.name)
+        for b in agents[i + 1 :]:
+            if a.framework != b.framework or not b.name:
+                continue
+            if _strong_name_overlap(a_tokens, _name_tokens(b.name)):
+                union(a.id, b.id)
+
+    components: dict[str, list[Agent]] = defaultdict(list)
     for agent in agents:
-        groups[(agent.framework, agent.name.split()[0].lower() if agent.name else "")].append(agent)
+        components[find(agent.id)].append(agent)
 
     created = []
-    for (_, key), group in groups.items():
-        if len(group) < 2 or not key:
+    for group in components.values():
+        if len(group) < 2:
             continue
         primary = group[0]
         if await _has_open_recommendation(db, org_id, primary.id, RecommendationType.MERGE_DUPLICATE):
@@ -211,6 +258,57 @@ async def _rule_duplicate_agents(
         )
         db.add(rec)
         created.append(rec)
+    if created:
+        await db.commit()
+    return created
+
+
+async def _rule_overlapping_workflows(
+    db: AsyncSession, org_id: str, agents: list[Agent]
+) -> list[Recommendation]:
+    """Cross-framework name-similarity: the same capability rebuilt in a
+    *different* framework, as a first-class, queryable Recommendation
+    (type=WORKFLOW_OPTIMIZATION) rather than narrative-only text. Same
+    overlap threshold as _rule_duplicate_agents but requires a DIFFERENT
+    framework, since same-framework overlap is that rule's job.
+
+    This previously existed only as report_service._detect_redundant_
+    workflows, invisible to GET /recommendations and the Optimization
+    Planner — see docs/ASP-6262-Production-Readiness-Audit.md finding M-2.
+    """
+    created = []
+    seen_pairs: set[frozenset[str]] = set()
+    for i, a in enumerate(agents):
+        if not a.name:
+            continue
+        a_tokens = _name_tokens(a.name)
+        for b in agents[i + 1 :]:
+            if a.framework == b.framework or not b.name:
+                continue
+            if not _strong_name_overlap(a_tokens, _name_tokens(b.name)):
+                continue
+            pair = frozenset((a.id, b.id))
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            if await _has_open_recommendation(
+                db, org_id, a.id, RecommendationType.WORKFLOW_OPTIMIZATION
+            ):
+                continue
+            rec = Recommendation(
+                org_id=org_id,
+                agent_id=a.id,
+                type=RecommendationType.WORKFLOW_OPTIMIZATION,
+                title=f'"{a.name}" and "{b.name}" appear to overlap in purpose',
+                description=(
+                    f'"{a.name}" ({a.framework.value}) and "{b.name}" ({b.framework.value}) share a '
+                    "similar name and purpose despite using different frameworks — worth reviewing "
+                    "whether both are needed, or whether one should be retired in favor of the other."
+                ),
+                impact_estimate="2 agents doing similar work",
+            )
+            db.add(rec)
+            created.append(rec)
     if created:
         await db.commit()
     return created

@@ -16,8 +16,10 @@ import {
 } from "@agentops/ui";
 import type { HealthScan, Recommendation } from "@agentops/shared-types";
 import { apiFetch } from "@/lib/api-client";
+import { getReportVerification } from "@/lib/verification";
 import { RecommendationActions } from "@/components/recommendation-actions";
 import { OptimizationPlanView } from "@/components/health-scan/optimization-plan";
+import { VerificationCard } from "@/components/health-scan/verification-card";
 
 const STEP_ORDER = ["pending", "parsing", "analyzing", "generating_report", "completed"] as const;
 
@@ -50,6 +52,12 @@ export function ScanStatus({ initialScan }: { initialScan: HealthScan }) {
   const { data: recommendations } = useQuery({
     queryKey: ["scan-recommendations", scan.id],
     queryFn: () => apiFetch<Recommendation[]>("/recommendations?status_filter=open"),
+    enabled: scan.status === "completed",
+  });
+
+  const { data: verification } = useQuery({
+    queryKey: ["scan-verification", scan.id],
+    queryFn: () => getReportVerification(scan.id),
     enabled: scan.status === "completed",
   });
 
@@ -157,6 +165,8 @@ export function ScanStatus({ initialScan }: { initialScan: HealthScan }) {
           </CardContent>
         </Card>
       )}
+
+      <VerificationCard verification={verification ?? null} />
 
       {report && (
         <div className="grid gap-4 lg:grid-cols-2">

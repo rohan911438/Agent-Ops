@@ -38,3 +38,8 @@ Thumbs.db
 
 # Database
 *.sqlite3
+
+# Hardhat / Solidity
+packages/contracts/artifacts/
+packages/contracts/cache/
+packages/contracts/typechain-types/

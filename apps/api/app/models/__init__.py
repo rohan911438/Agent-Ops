@@ -7,6 +7,7 @@ from app.models.connector import Connector
 from app.models.health_scan import HealthScan
 from app.models.organization import Organization
 from app.models.recommendation import Recommendation
+from app.models.report_verification import ReportVerification
 from app.models.user import User
 from app.models.wallet import Wallet
 
@@ -20,6 +21,7 @@ __all__ = [
     "HealthScan",
     "Organization",
     "Recommendation",
+    "ReportVerification",
     "User",
     "Wallet",
 ]

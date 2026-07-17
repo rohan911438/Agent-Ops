@@ -93,6 +93,16 @@ class WalletChain(str, enum.Enum):
     BASE = "base"
 
 
+class VerificationStatus(str, enum.Enum):
+    """Status of an Executive Report's on-chain proof submission — see
+    app/services/verification_service.py. A chain failure never fails the
+    Health Scan itself; it just leaves the row at FAILED."""
+
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+
+
 class AuthProviderType(str, enum.Enum):
     """Identity provider that authenticated a user. WALLET (OKX) is the only
     one implemented today — see app/auth/providers/. The rest are reserved

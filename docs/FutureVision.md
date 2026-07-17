@@ -6,7 +6,7 @@ AgentOps Cloud becomes the operating system for enterprise AI the same way Okta 
 
 - **Multi-tenancy model.** `org_id`-scoped rows in a single database are enough until an enterprise customer requires physical data isolation. Graduating to schema-per-tenant or row-level security is an infrastructure change behind the same service-layer API — no route or frontend change needed when it happens.
 - **Recommendation engine architecture.** Rule-based today. Whether Phase 4 makes it a learned model, a hybrid, or an LLM-judge over agent traces is not decided — the engine's output contract (`Recommendation` rows with a `type`, `title`, `description`, `impact_estimate`) is stable regardless of what generates them.
-- **Blockchain's actual role.** Reserved for immutable execution proofs, agent identity, and audit verification — not payments, not tokens, not a marketplace currency. The `wallets` table and `tx_hash` columns exist so this doesn't require a schema migration when it's built; nothing about the MVP depends on them.
+- **Blockchain's actual role.** The report-hash anchoring piece is now real (`EnterpriseReportRegistry` on Base Sepolia — see `docs/ContractArchitecture.md`), using the `wallets` table and `tx_hash` columns reserved since Phase 2/3. Agent identity and execution-proof anchoring beyond report hashes remain future work (Phase 5). Still not payments, not tokens, not a marketplace currency — `ServicePricing.sol` and the `PaymentProvider` ABC exist as prepared architecture only (`docs/FutureMonetization.md`); nothing charges anyone today.
 
 ## What "millions of agents" implies architecturally (not built yet, but not precluded)
 
