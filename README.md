@@ -17,6 +17,10 @@ As companies adopt AI, they end up with dozens or hundreds of agents scattered a
 
 AgentOps Cloud is that system of record — an inventory, risk, and optimization layer that sits above every framework instead of replacing any of them.
 
+## Pitch deck
+
+[View the pitch deck ↗](https://docs.google.com/presentation/d/1Hdj7gSR5zgK-ceWx2kG_EUP6dsoi3UeOTZaNcn9qTc0/edit?usp=sharing)
+
 ## Live deployment
 
 | | |
