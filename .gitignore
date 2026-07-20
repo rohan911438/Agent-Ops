@@ -46,3 +46,6 @@ packages/contracts/typechain-types/
 
 .vercel
 .env*
+
+# ASP reconciler runtime state (logs, health snapshot, pid lock, recovery record)
+scripts/asp-reconciler/logs/
