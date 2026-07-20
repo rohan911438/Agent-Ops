@@ -22,6 +22,7 @@ import {
   signMessage,
   WalletNotInstalledError,
 } from "@/lib/okx-wallet";
+import { connectWalletConnect, signMessageWalletConnect } from "@/lib/wallet-connect";
 
 type ConnectStep = "idle" | "connecting" | "awaiting-signature" | "verifying";
 
@@ -57,26 +58,44 @@ export function ConnectWalletButton({
       return;
     }
 
+    await runConnectFlow(connectWallet, signMessage);
+  }
+
+  // WalletConnect path — for every device without the OKX Wallet browser
+  // extension (all mobile browsers, any desktop without it installed).
+  // Same nonce/verify handshake as the extension flow; only how the address
+  // and signature are obtained differs, so it shares runConnectFlow below
+  // rather than duplicating the try/catch/step machinery.
+  async function handleConnectWalletConnect() {
+    setError(null);
+    setShowInstallDialog(false);
+    await runConnectFlow(connectWalletConnect, signMessageWalletConnect);
+  }
+
+  async function runConnectFlow(
+    connect: () => Promise<string>,
+    sign: (address: string, message: string) => Promise<string>,
+  ) {
     let currentStep: ConnectStep = "connecting";
 
     try {
       setStep("connecting");
-      const address = await connectWallet();
+      const address = await connect();
 
       const { nonce, message } = await apiFetch<WalletNonceResponse>("/auth/wallet/nonce", {
         method: "POST",
         body: JSON.stringify({ address }),
       });
 
-      // OKX Wallet requires a *second*, separate approval here — connecting
+      // The wallet requires a *second*, separate approval here — connecting
       // the account (above) does not sign anything. If a user closes or
-      // rejects this second popup, the extension can still show the site as
+      // rejects this second popup, the wallet can still show the site as
       // "connected" (that's a persistent, independent state), which is why
       // the error below calls out signing specifically instead of implying
       // the connection itself failed.
       currentStep = "awaiting-signature";
       setStep("awaiting-signature");
-      const signature = await signMessage(address, message);
+      const signature = await sign(address, message);
 
       currentStep = "verifying";
       setStep("verifying");
@@ -126,22 +145,27 @@ export function ConnectWalletButton({
 
       <Dialog open={showInstallDialog} onOpenChange={setShowInstallDialog}>
         <DialogHeader>
-          <DialogTitle>OKX Wallet is required</DialogTitle>
+          <DialogTitle>Connect your wallet</DialogTitle>
           <DialogDescription>
-            AgentOps Cloud uses the OKX Wallet browser extension to securely verify your
-            identity — no password to manage, no separate account to create.
+            AgentOps Cloud uses wallet sign-in to securely verify your identity — no password to
+            manage, no separate account to create. The OKX Wallet browser extension wasn&apos;t
+            detected on this browser — on mobile, or any desktop browser without it installed,
+            use WalletConnect instead.
           </DialogDescription>
         </DialogHeader>
         <Alert variant="warning">
           <AlertTitle>Extension not detected</AlertTitle>
           <AlertDescription>
-            Install the OKX Wallet extension, then come back to this page and connect again —
-            no reload needed.
+            Install the OKX Wallet extension for this browser, or scan a QR code / open your
+            mobile wallet app via WalletConnect below.
           </AlertDescription>
         </Alert>
         <DialogFooter>
           <Button variant="outline" onClick={() => setShowInstallDialog(false)}>
             Cancel
+          </Button>
+          <Button variant="outline" disabled={step !== "idle"} onClick={handleConnectWalletConnect}>
+            {step === "idle" ? "Connect via WalletConnect" : STEP_LABEL[step]}
           </Button>
           <a href={OKX_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
             <Button>Install OKX Wallet</Button>
