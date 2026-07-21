@@ -11,131 +11,43 @@
 //
 // Every POLL_INTERVAL_MS:
 //   1. Ask onchainos for this ASP's on-chain active tasks (ground truth).
-//   2. Read the daemon's local job_provider_bindings table (what it thinks it has handled).
-//   3. Any task with status "created" and no local binding is treated as missed and is
+//   2. Determine which of those tasks have a *confirmed* on-chain Apply — see
+//      getConfirmedAppliedJobIds() below for why this is NOT the same question as "does the
+//      daemon have a job_provider_bindings row for it."
+//   3. Any task with status "created" and no confirmed Apply is treated as missed and is
 //      re-applied directly via `onchainos agent apply`, with exponential-backoff retry.
 //   4. State is exposed on GET /health for external monitoring.
 
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { createServer } from "node:http";
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { createSingleInstanceLock } from "./lib/lock.mjs";
 
 const ASP_AGENT_ID = process.env.ASP_AGENT_ID || "6262";
 const POLL_INTERVAL_MS = Number(process.env.RECONCILE_INTERVAL_MS || 30_000);
 const HEALTH_PORT = Number(process.env.RECONCILE_HEALTH_PORT || 4790);
+const OKX_HOME = process.env.OKX_AGENT_TASK_HOME || path.join(homedir(), ".okx-agent-task");
 const SESSION_STORE_PATH =
-  process.env.SESSION_STORE_PATH ||
-  path.join(homedir(), ".okx-agent-task", "sqlite", "session-store.sqlite");
+  process.env.SESSION_STORE_PATH || path.join(OKX_HOME, "sqlite", "session-store.sqlite");
+const LISTENER_LOG = path.join(OKX_HOME, "logs", "listener.log");
 const RETRY_DELAYS_MS = [5_000, 15_000, 45_000]; // exponential backoff for a failed apply
 
 const LOG_DIR = path.join(import.meta.dirname, "logs");
 const LOG_FILE = path.join(LOG_DIR, "reconciler.log");
 const HEALTH_FILE = path.join(LOG_DIR, "health.json");
 const RECOVERED_JOBS_FILE = path.join(LOG_DIR, "recovered-jobs.json");
-const LOCK_FILE = path.join(LOG_DIR, "reconciler.lock.json");
-// Legacy bare-pid lock file from before the heartbeat-based lock. Only read once, to avoid
-// treating a leftover file from the old format as a live instance on first upgrade.
-const LEGACY_PID_LOCK_FILE = path.join(LOG_DIR, "reconciler.pid");
 mkdirSync(LOG_DIR, { recursive: true });
 
-// A lock is only honored while its holder is both (a) a live PID and (b) has heartbeated
-// recently. (b) is what actually matters: a bare PID check can't tell "the reconciler is
-// still running" from "some unrelated process now happens to hold this recycled PID" — which
-// is exactly what happened in production (reconciler died, Windows recycled its PID to
-// svchost.exe after a reboot, and every restart attempt refused to start because *a* process
-// with that PID existed). Requiring a fresh heartbeat closes that gap regardless of PID reuse
-// or reboots: a dead or hung process simply stops heartbeating, full stop.
-const LOCK_STALE_MS = Number(process.env.RECONCILE_LOCK_STALE_MS || 5 * 60_000); // 5 min
-
-function isProcessAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function readLock() {
-  if (existsSync(LOCK_FILE)) {
-    try {
-      const data = JSON.parse(readFileSync(LOCK_FILE, "utf8"));
-      if (data && typeof data.pid === "number" && typeof data.heartbeatAt === "string") {
-        return data;
-      }
-    } catch {
-      // Corrupt lock file — treat as absent/stale, safe to reclaim below.
-    }
-  }
-  // One-time fallback for the pre-upgrade plain-pid lock file: treat it as maximally stale
-  // (no heartbeat concept existed), so it never blocks a fresh start, and remove it so we
-  // don't keep re-parsing it.
-  if (existsSync(LEGACY_PID_LOCK_FILE)) {
-    try {
-      rmSync(LEGACY_PID_LOCK_FILE, { force: true });
-    } catch {
-      // best-effort cleanup
-    }
-  }
-  return null;
-}
-
-function writeLock() {
-  writeFileSync(
-    LOCK_FILE,
-    JSON.stringify({ pid: process.pid, startedAt: lockStartedAt, heartbeatAt: new Date().toISOString() }, null, 2),
-    "utf8"
-  );
-}
-
-// Called at the start of every blocking `onchainos` call (the actual event-loop-blocking
-// work `spawnSync` does) and on an idle timer between ticks, so the heartbeat stays fresh
-// both while busy and while sleeping between polls.
-function touchLockHeartbeat() {
-  if (!lockOwned) return;
-  writeLock();
-}
-
-let lockStartedAt = null;
-let lockOwned = false;
-
-// Single-instance guard. Needed once this runs unattended under a scheduled task/supervisor
-// loop, where a restart-on-crash wrapper and a manual `node reconcile.mjs` could otherwise
-// both be alive at once and double-apply against the same jobs.
-function acquireSingleInstanceLock() {
-  const existing = readLock();
-  if (existing) {
-    const ageMs = Date.now() - new Date(existing.heartbeatAt).getTime();
-    const stillAlive = isProcessAlive(existing.pid);
-    if (stillAlive && ageMs < LOCK_STALE_MS) {
-      console.error(
-        `[reconciler] another instance is already running (pid=${existing.pid}, ` +
-          `last heartbeat ${ageMs}ms ago); exiting.`
-      );
-      process.exit(1);
-    }
-    console.error(
-      `[reconciler] reclaiming stale lock (pid=${existing.pid}, ` +
-        `alive=${stillAlive}, lastHeartbeat=${existing.heartbeatAt}, ageMs=${ageMs}) — ` +
-        `${stillAlive ? "PID is alive but heartbeat is stale (likely a recycled PID or a hung process), " : "PID is dead, "}` +
-        `taking over.`
-    );
-  }
-  lockStartedAt = new Date().toISOString();
-  lockOwned = true;
-  writeLock();
-}
-acquireSingleInstanceLock();
+const lock = createSingleInstanceLock({
+  lockFile: path.join(LOG_DIR, "reconciler.lock.json"),
+  legacyPidFile: path.join(LOG_DIR, "reconciler.pid"),
+  staleMs: Number(process.env.RECONCILE_LOCK_STALE_MS || 5 * 60_000), // 5 min
+  label: "reconciler",
+});
+lock.acquire();
 
 // Own idempotency record, independent of the daemon's job_provider_bindings table.
 // A reconciler-driven `apply` does NOT create a daemon-side binding row (only the daemon's
@@ -164,7 +76,7 @@ const health = {
   lastPollOk: null,
   lastPollError: null,
   lastActiveTaskCount: null,
-  lastMissingBindingJobs: [],
+  lastMissingApplyJobs: [],
   lastRecoveryAttemptAt: null,
   lastRecoverySuccessAt: null,
   lastApplyTxHash: null,
@@ -173,6 +85,9 @@ const health = {
   totalRecoveriesAttempted: 0,
   totalRecoveriesSucceeded: 0,
   totalRecoveriesFailed: 0,
+  reconcileInFlight: false,
+  currentCycleStartedAt: null,
+  totalTicksSkippedOverlap: 0,
 };
 
 function log(level, message, extra) {
@@ -198,7 +113,7 @@ function runOnchainos(args, { timeoutMs = 30_000 } = {}) {
   // calls take 2+ minutes), so a timer-only heartbeat can go stale mid-call even though the
   // process is legitimately busy, not dead. Touch right before blocking so the lock file
   // always reflects "still actively working" at the moment we start a long operation.
-  touchLockHeartbeat();
+  lock.touch();
   const result = spawnSync("onchainos", args, {
     encoding: "utf8",
     timeout: timeoutMs,
@@ -232,6 +147,16 @@ function getActiveCreatedTasks() {
   );
 }
 
+// Purely informational now — kept for the `boundCount` visibility in the tick log/health, NOT
+// used to decide whether a job still needs an Apply. See getConfirmedAppliedJobIds() for why:
+// the daemon writes this row the moment it *starts* dispatching a session, before that session
+// has done anything — including the case where the session then hangs forever and never
+// applies. Treating "a binding row exists" as "handled, don't touch again" is exactly the bug
+// that let job 0xd75ab029…94ab9a2 sit un-applied: the daemon created the binding at 13:23:34,
+// the spawned session then hung producing zero output, and — had this reconciler's "missing"
+// filter still keyed off binding presence instead of confirmed Apply — it would have
+// permanently ignored that job from the moment the binding appeared, even though no Apply was
+// ever submitted from that path.
 function getLocalBoundJobIds() {
   const db = new DatabaseSync(SESSION_STORE_PATH, { readOnly: true });
   try {
@@ -240,6 +165,41 @@ function getLocalBoundJobIds() {
   } finally {
     db.close();
   }
+}
+
+// Ground truth for "has this job actually been applied to" — a `provider_applied` system
+// event, which the OKX backend only sends after confirming the Apply on-chain, regardless of
+// whether the Apply was submitted by the daemon's own dispatch path or by this reconciler
+// calling `onchainos agent apply` directly. Unlike job_provider_bindings, this can't be
+// "created" without an actual successful apply ever happening.
+//
+// The daemon truncates jobId in this log field to `<first 8 chars>…<last 6 chars>` (e.g.
+// `0xd75ab0…4ab9a2` for `0xd75ab029...94ab9a2`) rather than logging it in full, so we build the
+// same truncated fingerprint for each job we're actually asking about this cycle and match
+// against that — restricting the match space to the small set of currently-active tasks makes
+// an accidental fingerprint collision against some unrelated historical job a non-concern.
+const PROVIDER_APPLIED_RE = /event=provider_applied\s+job=(\S+)/g;
+
+function getConfirmedAppliedJobIds(activeTasks) {
+  const confirmed = new Set();
+  if (!existsSync(LISTENER_LOG)) return confirmed;
+  let content;
+  try {
+    content = readFileSync(LISTENER_LOG, "utf8");
+  } catch (err) {
+    log("error", "failed to read listener.log for provider_applied confirmation", {
+      error: String(err.message || err),
+    });
+    return confirmed;
+  }
+  const fingerprintToJobId = new Map(
+    activeTasks.map((t) => [`${t.jobId.slice(0, 8)}…${t.jobId.slice(-6)}`, t.jobId])
+  );
+  for (const match of content.matchAll(PROVIDER_APPLIED_RE)) {
+    const fullJobId = fingerprintToJobId.get(match[1]);
+    if (fullJobId) confirmed.add(fullJobId);
+  }
+  return confirmed;
 }
 
 function checkWalletGate() {
@@ -322,13 +282,14 @@ async function reconcileOnce() {
     health.walletGateOk = checkWalletGate();
 
     const activeTasks = getActiveCreatedTasks();
-    const boundJobIds = getLocalBoundJobIds();
+    const boundJobIds = getLocalBoundJobIds(); // informational only — see comment on getLocalBoundJobIds
+    const confirmedAppliedJobIds = getConfirmedAppliedJobIds(activeTasks);
     health.lastActiveTaskCount = activeTasks.length;
 
     const missing = activeTasks.filter(
-      (t) => !boundJobIds.has(t.jobId) && !recoveredJobs.has(t.jobId)
+      (t) => !confirmedAppliedJobIds.has(t.jobId) && !recoveredJobs.has(t.jobId)
     );
-    health.lastMissingBindingJobs = missing.map((t) => ({
+    health.lastMissingApplyJobs = missing.map((t) => ({
       jobId: t.jobId,
       title: t.title,
       counterpartyAgentId: t.counterpartyAgentId,
@@ -337,13 +298,15 @@ async function reconcileOnce() {
     log("info", "reconciliation tick", {
       activeTaskCount: activeTasks.length,
       boundCount: boundJobIds.size,
+      confirmedAppliedCount: confirmedAppliedJobIds.size,
       missingCount: missing.length,
     });
 
     for (const task of missing) {
       log(
         "warn",
-        "designated task has no local dispatch record — daemon likely missed job_asp_selected",
+        "designated task has no confirmed on-chain Apply — daemon may have missed " +
+          "job_asp_selected, or dispatched a session that never completed the apply",
         { jobId: task.jobId, title: task.title, counterpartyAgentId: task.counterpartyAgentId }
       );
       await applyWithRetry(task);
@@ -357,6 +320,40 @@ async function reconcileOnce() {
     log("error", "reconciliation tick failed", { error: String(err.message || err) });
   }
   writeHealth();
+}
+
+// Non-overlapping tick guard. `setInterval` fires on a fixed cadence regardless of whether
+// the previous `reconcileOnce()` (including its serial `applyWithRetry` calls, which can
+// block for minutes across backoff retries — or, as happened in production, for hours if the
+// machine sleeps mid-retry) has finished. Without this guard, a slow/stuck cycle plus a
+// resumed-from-sleep timer pile-up let two independent reconciliation cycles discover the
+// same "missing" job and each submit their own on-chain Apply — a real duplicate-Apply
+// incident, not a hypothetical one. This flag makes cycles strictly serial: at most one
+// `reconcileOnce()` runs at a time, and a tick that fires while one is still in flight is
+// skipped (and logged) rather than starting a second, overlapping cycle.
+let reconcileInFlight = false;
+
+async function runReconcileTick() {
+  if (reconcileInFlight) {
+    health.totalTicksSkippedOverlap += 1;
+    log("warn", "reconciliation tick skipped — previous cycle still in progress", {
+      currentCycleStartedAt: health.currentCycleStartedAt,
+    });
+    writeHealth();
+    return;
+  }
+  reconcileInFlight = true;
+  health.reconcileInFlight = true;
+  health.currentCycleStartedAt = new Date().toISOString();
+  writeHealth();
+  try {
+    await reconcileOnce();
+  } finally {
+    reconcileInFlight = false;
+    health.reconcileInFlight = false;
+    health.currentCycleStartedAt = null;
+    writeHealth();
+  }
 }
 
 function startHealthServer() {
@@ -383,12 +380,12 @@ async function main() {
   });
   const server = startHealthServer();
 
-  await reconcileOnce();
-  const interval = setInterval(reconcileOnce, POLL_INTERVAL_MS);
+  await runReconcileTick();
+  const interval = setInterval(runReconcileTick, POLL_INTERVAL_MS);
   // Keeps the heartbeat fresh during idle gaps between ticks (e.g. a slow-poll interval or a
   // sleep() backoff between apply retries) — separate from the per-call touch in
   // runOnchainos(), which covers the blocking-call case the timer can't fire during.
-  const heartbeatTimer = setInterval(touchLockHeartbeat, Math.min(POLL_INTERVAL_MS, 30_000));
+  const heartbeatTimer = setInterval(() => lock.touch(), Math.min(POLL_INTERVAL_MS, 30_000));
 
   const shutdown = () => {
     log("info", "reconciler shutting down");
@@ -396,12 +393,7 @@ async function main() {
     writeHealth();
     clearInterval(interval);
     clearInterval(heartbeatTimer);
-    lockOwned = false;
-    try {
-      rmSync(LOCK_FILE, { force: true });
-    } catch {
-      // best-effort; a stale-and-unheartbeated lock is safely reclaimed on next start anyway
-    }
+    lock.release();
     server.close(() => process.exit(0));
   };
   process.on("SIGINT", shutdown);
