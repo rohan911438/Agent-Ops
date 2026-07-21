@@ -42,8 +42,20 @@ const LOG_DIR = path.join(import.meta.dirname, "logs");
 const LOG_FILE = path.join(LOG_DIR, "reconciler.log");
 const HEALTH_FILE = path.join(LOG_DIR, "health.json");
 const RECOVERED_JOBS_FILE = path.join(LOG_DIR, "recovered-jobs.json");
-const LOCK_FILE = path.join(LOG_DIR, "reconciler.pid");
+const LOCK_FILE = path.join(LOG_DIR, "reconciler.lock.json");
+// Legacy bare-pid lock file from before the heartbeat-based lock. Only read once, to avoid
+// treating a leftover file from the old format as a live instance on first upgrade.
+const LEGACY_PID_LOCK_FILE = path.join(LOG_DIR, "reconciler.pid");
 mkdirSync(LOG_DIR, { recursive: true });
+
+// A lock is only honored while its holder is both (a) a live PID and (b) has heartbeated
+// recently. (b) is what actually matters: a bare PID check can't tell "the reconciler is
+// still running" from "some unrelated process now happens to hold this recycled PID" — which
+// is exactly what happened in production (reconciler died, Windows recycled its PID to
+// svchost.exe after a reboot, and every restart attempt refused to start because *a* process
+// with that PID existed). Requiring a fresh heartbeat closes that gap regardless of PID reuse
+// or reboots: a dead or hung process simply stops heartbeating, full stop.
+const LOCK_STALE_MS = Number(process.env.RECONCILE_LOCK_STALE_MS || 5 * 60_000); // 5 min
 
 function isProcessAlive(pid) {
   try {
@@ -54,21 +66,74 @@ function isProcessAlive(pid) {
   }
 }
 
+function readLock() {
+  if (existsSync(LOCK_FILE)) {
+    try {
+      const data = JSON.parse(readFileSync(LOCK_FILE, "utf8"));
+      if (data && typeof data.pid === "number" && typeof data.heartbeatAt === "string") {
+        return data;
+      }
+    } catch {
+      // Corrupt lock file — treat as absent/stale, safe to reclaim below.
+    }
+  }
+  // One-time fallback for the pre-upgrade plain-pid lock file: treat it as maximally stale
+  // (no heartbeat concept existed), so it never blocks a fresh start, and remove it so we
+  // don't keep re-parsing it.
+  if (existsSync(LEGACY_PID_LOCK_FILE)) {
+    try {
+      rmSync(LEGACY_PID_LOCK_FILE, { force: true });
+    } catch {
+      // best-effort cleanup
+    }
+  }
+  return null;
+}
+
+function writeLock() {
+  writeFileSync(
+    LOCK_FILE,
+    JSON.stringify({ pid: process.pid, startedAt: lockStartedAt, heartbeatAt: new Date().toISOString() }, null, 2),
+    "utf8"
+  );
+}
+
+// Called at the start of every blocking `onchainos` call (the actual event-loop-blocking
+// work `spawnSync` does) and on an idle timer between ticks, so the heartbeat stays fresh
+// both while busy and while sleeping between polls.
+function touchLockHeartbeat() {
+  if (!lockOwned) return;
+  writeLock();
+}
+
+let lockStartedAt = null;
+let lockOwned = false;
+
 // Single-instance guard. Needed once this runs unattended under a scheduled task/supervisor
 // loop, where a restart-on-crash wrapper and a manual `node reconcile.mjs` could otherwise
 // both be alive at once and double-apply against the same jobs.
 function acquireSingleInstanceLock() {
-  if (existsSync(LOCK_FILE)) {
-    const existingPid = Number(readFileSync(LOCK_FILE, "utf8").trim());
-    if (existingPid && isProcessAlive(existingPid)) {
+  const existing = readLock();
+  if (existing) {
+    const ageMs = Date.now() - new Date(existing.heartbeatAt).getTime();
+    const stillAlive = isProcessAlive(existing.pid);
+    if (stillAlive && ageMs < LOCK_STALE_MS) {
       console.error(
-        `[reconciler] another instance is already running (pid=${existingPid}); exiting.`
+        `[reconciler] another instance is already running (pid=${existing.pid}, ` +
+          `last heartbeat ${ageMs}ms ago); exiting.`
       );
       process.exit(1);
     }
-    // Stale lock from a previous crash/kill — safe to take over.
+    console.error(
+      `[reconciler] reclaiming stale lock (pid=${existing.pid}, ` +
+        `alive=${stillAlive}, lastHeartbeat=${existing.heartbeatAt}, ageMs=${ageMs}) — ` +
+        `${stillAlive ? "PID is alive but heartbeat is stale (likely a recycled PID or a hung process), " : "PID is dead, "}` +
+        `taking over.`
+    );
   }
-  writeFileSync(LOCK_FILE, String(process.pid), "utf8");
+  lockStartedAt = new Date().toISOString();
+  lockOwned = true;
+  writeLock();
 }
 acquireSingleInstanceLock();
 
@@ -129,6 +194,11 @@ function writeHealth() {
 }
 
 function runOnchainos(args, { timeoutMs = 30_000 } = {}) {
+  // spawnSync blocks the event loop for the full duration of the call (we've observed single
+  // calls take 2+ minutes), so a timer-only heartbeat can go stale mid-call even though the
+  // process is legitimately busy, not dead. Touch right before blocking so the lock file
+  // always reflects "still actively working" at the moment we start a long operation.
+  touchLockHeartbeat();
   const result = spawnSync("onchainos", args, {
     encoding: "utf8",
     timeout: timeoutMs,
@@ -315,16 +385,22 @@ async function main() {
 
   await reconcileOnce();
   const interval = setInterval(reconcileOnce, POLL_INTERVAL_MS);
+  // Keeps the heartbeat fresh during idle gaps between ticks (e.g. a slow-poll interval or a
+  // sleep() backoff between apply retries) — separate from the per-call touch in
+  // runOnchainos(), which covers the blocking-call case the timer can't fire during.
+  const heartbeatTimer = setInterval(touchLockHeartbeat, Math.min(POLL_INTERVAL_MS, 30_000));
 
   const shutdown = () => {
     log("info", "reconciler shutting down");
     health.pollingActive = false;
     writeHealth();
     clearInterval(interval);
+    clearInterval(heartbeatTimer);
+    lockOwned = false;
     try {
       rmSync(LOCK_FILE, { force: true });
     } catch {
-      // best-effort; a stale-but-dead-pid lock is safely reclaimed on next start anyway
+      // best-effort; a stale-and-unheartbeated lock is safely reclaimed on next start anyway
     }
     server.close(() => process.exit(0));
   };

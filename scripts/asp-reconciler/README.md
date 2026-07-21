@@ -33,9 +33,13 @@ this script (see the bug report doc). Once that's fixed upstream, tighten step (
 on-chain application state directly instead of the daemon's local table.
 
 Requires `onchainos` on `PATH` and to be logged in (same account the daemon uses). One
-instance enforced via a PID lock file (`logs/reconciler.pid`) — a second `node
+instance enforced via a lockfile + heartbeat (`logs/reconciler.lock.json`) — a second `node
 reconcile.mjs` started while one is already running exits immediately rather than double-
-applying.
+applying. The lock is only honored while its holder's PID is alive *and* it heartbeated
+within the last `RECONCILE_LOCK_STALE_MS` (default 5 min); a dead process or a stale
+heartbeat is reclaimed automatically, so a stuck instance or a reboot that recycles the old
+PID to an unrelated process can't wedge the lock permanently (this happened once with the
+old bare-PID-only lock — see git history).
 
 ## Production setup (installed and verified on this machine)
 
@@ -77,8 +81,8 @@ schtasks /Run /TN "ASP-6262-Reconciler"
 schtasks /End /TN "ASP-6262-Reconciler"
 ```
 This kills the supervisor batch process. If the `node` child is still running under it,
-also stop it directly (find the pid in `logs/reconciler.pid`) — the supervisor loop only
-restarts `node`, it doesn't independently respawn itself once `/End`ed.
+also stop it directly (find the pid in `logs/reconciler.lock.json`) — the supervisor loop
+only restarts `node`, it doesn't independently respawn itself once `/End`ed.
 
 ### View logs
 
